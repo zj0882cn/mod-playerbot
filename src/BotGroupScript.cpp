@@ -16,18 +16,53 @@ BotGroupScript::BotGroupScript() : GroupScript("BotGroupScript", {
     GROUPHOOK_ON_DISBAND,
 }) { }
 
-void BotGroupScript::OnInviteMember(Group* /*group*/, ObjectGuid guid)
+void BotGroupScript::OnInviteMember(Group* group, ObjectGuid guid)
 {
-    // Bots do not auto-accept group invites anymore.
-    // The bot's player must accept the invite manually via the client UI.
     if (!sPlayerBotMgr->IsBot(guid))
         return;
 
     Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
-    if (bot)
+    if (!bot)
+        return;
+
+    // NOTE: GetGroupInvite() is ALWAYS non-empty here because Group::AddInvite()
+    // calls SetGroupInvite() BEFORE firing the OnInviteMember hook. Checking it
+    // would make the bot never auto-accept group invites, so it is intentionally
+    // omitted. AddInvite() already guards against bots that are in a group or
+    // already have a pending invite.
+    Group* playerGroup = bot->GetGroup();
+    if (playerGroup && (playerGroup->isBGGroup() || playerGroup->isBFGroup()))
+        playerGroup = bot->GetOriginalGroup();
+    if (playerGroup)
+        return;
+
+    if (group->IsFull())
+        return;
+
+    ObjectGuid inviterGuid = group->GetLeaderGUID();
+    Player* inviter = ObjectAccessor::FindConnectedPlayer(inviterGuid);
+    if (!inviter)
+        return;
+
+    ObjectGuid currentMaster = sPlayerBotMgr->GetMaster(guid);
+
+    if (!currentMaster.IsEmpty())
     {
         ChatHandler handler(bot->GetSession());
-        handler.PSendSysMessage("|cff00ff00[Bot]|r You received a group invite. Accept it manually to join.");
+        handler.PSendSysMessage("|cffff0000[Bot]|r Already has a Master.");
+        return;
+    }
+
+    sPlayerBotMgr->SetMaster(guid, inviterGuid);
+
+    if (group->AddMember(bot))
+    {
+        group->BroadcastGroupUpdate();
+        ChatHandler handler(bot->GetSession());
+        handler.PSendSysMessage("|cff00ff00[Bot]|r |cffff00ff{}|r is now your Master!", 
+            inviter->GetName());
+        LOG_INFO("playerbots", "[{}] Bot '{}' assigned Master '{}'", 
+            PLAYERBOT_VERSION, bot->GetName(), inviter->GetName());
     }
 }
 

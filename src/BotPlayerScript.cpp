@@ -19,7 +19,7 @@ BotPlayerScript::BotPlayerScript() : PlayerScript("BotPlayerScript", {
     PLAYERHOOK_ON_UPDATE,
 }) { }
 
-void BotPlayerScript::OnLogin(Player* player)
+void BotPlayerScript::OnPlayerLogin(Player* player)
 {
     if (!sPlayerBotMgr->IsBot(player->GetGUID()))
         return;
@@ -33,7 +33,7 @@ void BotPlayerScript::OnLogin(Player* player)
     LOG_INFO("playerbots", "[{}] Bot '{}' logged in", PLAYERBOT_VERSION, player->GetName());
 }
 
-void BotPlayerScript::OnUpdate(Player* player, uint32 p_time)
+void BotPlayerScript::OnPlayerUpdate(Player* player, uint32 p_time)
 {
     if (!sPlayerBotMgr->IsBot(player->GetGUID()))
         return;

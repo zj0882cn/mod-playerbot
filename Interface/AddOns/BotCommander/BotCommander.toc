@@ -1,0 +1,9 @@
+## Interface: 30300
+## Title: Bot Commander
+## Notes: 机器人控制面板 (GM/玩家自适应)
+## Author: YourName
+## Version: 2.0
+## SavedVariables: BotCommanderDB
+
+BotCommander.lua
+BotCommander.xml
