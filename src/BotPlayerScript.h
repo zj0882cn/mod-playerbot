@@ -13,8 +13,8 @@ class BotPlayerScript : public PlayerScript
 public:
     BotPlayerScript();
 
-    void OnPlayerLogin(Player* player) override;
-    void OnPlayerUpdate(Player* player, uint32 p_time) override;
+    void OnLogin(Player* player) override;
+    void OnUpdate(Player* player, uint32 p_time) override;
 
 private:
     void DoCombat(Player* bot, Unit* target);
