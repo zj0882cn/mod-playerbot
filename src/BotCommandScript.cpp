@@ -1,4 +1,5 @@
 #include "BotCommandScript.h"
+#include "BotCommon.h"
 #include "PlayerBotMgr.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -38,18 +39,18 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         }
         else
         {
-            handler->PSendSysMessage("|cff00ff00=== PlayerBot Module {} ===|r", PLAYERBOT_VERSION);
-            handler->PSendSysMessage("|cffff0000GM Commands:|r");
-            handler->PSendSysMessage("|cff00ff/bot set $name|r          - Mark a player as Bot");
-            handler->PSendSysMessage("|cff00ff/bot remove $name|r       - Remove a player from Bot list");
-            handler->PSendSysMessage("|cff00ff/bot list|r               - List all Bot players");
-            handler->PSendSysMessage("|cff00ff/bot clearmaster $name|r  - Clear bot's master");
-            handler->PSendSysMessage("|cff00ff/bot master $name|r       - Show bot's master");
-            handler->PSendSysMessage("|cffff0000Player Commands:|r");
-            handler->PSendSysMessage("|cff00ff/bot stance [defensive|passive|aggressive]|r - Set stance for ALL your bots");
-            handler->PSendSysMessage("|cff00ff/bot stance $name [defensive|passive|aggressive]|r - Set stance for one bot");
-            handler->PSendSysMessage("|cff00ff00==================================================|r");
-            handler->PSendSysMessage("Total bots: |cffff00ff%u|r", sPlayerBotMgr->GetCount());
+            BotSendSysMessage(handler, "|cff00ff00=== PlayerBot Module {} ===|r", PLAYERBOT_VERSION);
+            BotSendSysMessage(handler, "|cffff0000GM Commands:|r");
+            BotSendSysMessage(handler, "|cff00ff/bot set $name|r          - Mark a player as Bot");
+            BotSendSysMessage(handler, "|cff00ff/bot remove $name|r       - Remove a player from Bot list");
+            BotSendSysMessage(handler, "|cff00ff/bot list|r               - List all Bot players");
+            BotSendSysMessage(handler, "|cff00ff/bot clearmaster $name|r  - Clear bot's master");
+            BotSendSysMessage(handler, "|cff00ff/bot master $name|r       - Show bot's master");
+            BotSendSysMessage(handler, "|cffff0000Player Commands:|r");
+            BotSendSysMessage(handler, "|cff00ff/bot stance [defensive|passive|aggressive]|r - Set stance for ALL your bots");
+            BotSendSysMessage(handler, "|cff00ff/bot stance $name [defensive|passive|aggressive]|r - Set stance for one bot");
+            BotSendSysMessage(handler, "|cff00ff00==================================================|r");
+            BotSendSysMessage(handler, "Total bots: |cffff00ff%u|r", sPlayerBotMgr->GetCount());
         }
         return true;
     }
@@ -159,33 +160,33 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            handler->PSendSysMessage("|cffff0000[Bot]|r Requires GM3 permission.");
+            BotSendSysMessage(handler, "|cffff0000[Bot]|r Requires GM3 permission.");
             return true;
         }
 
         char* playerName = strtok(nullptr, " ");
         if (!playerName)
         {
-            handler->PSendSysMessage("|cffff0000Usage: /bot set $name|r");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot set $name|r");
             return true;
         }
 
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' not found.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' not found.|r", playerName);
             return true;
         }
 
         if (sPlayerBotMgr->IsBot(guid))
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' is already a Bot.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' is already a Bot.|r", playerName);
             return true;
         }
 
         sPlayerBotMgr->AddBot(guid);
-        handler->PSendSysMessage("|cff00ff00Player '{}' marked as Bot.|r", playerName);
-        handler->PSendSysMessage("Total bots: |cffff00ff%u|r", sPlayerBotMgr->GetCount());
+        BotSendSysMessage(handler, "|cff00ff00Player '{}' marked as Bot.|r", playerName);
+        BotSendSysMessage(handler, "Total bots: |cffff00ff%u|r", sPlayerBotMgr->GetCount());
         return true;
     }
 
@@ -193,33 +194,33 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            handler->PSendSysMessage("|cffff0000[Bot]|r Requires GM3 permission.");
+            BotSendSysMessage(handler, "|cffff0000[Bot]|r Requires GM3 permission.");
             return true;
         }
 
         char* playerName = strtok(nullptr, " ");
         if (!playerName)
         {
-            handler->PSendSysMessage("|cffff0000Usage: /bot remove $name|r");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot remove $name|r");
             return true;
         }
 
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' not found.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' not found.|r", playerName);
             return true;
         }
 
         if (!sPlayerBotMgr->IsBot(guid))
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' is not a Bot.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' is not a Bot.|r", playerName);
             return true;
         }
 
         sPlayerBotMgr->RemoveBot(guid);
-        handler->PSendSysMessage("|cff00ff00Player '{}' removed.|r", playerName);
-        handler->PSendSysMessage("Total bots: |cffff00ff%u|r", sPlayerBotMgr->GetCount());
+        BotSendSysMessage(handler, "|cff00ff00Player '{}' removed.|r", playerName);
+        BotSendSysMessage(handler, "Total bots: |cffff00ff%u|r", sPlayerBotMgr->GetCount());
         return true;
     }
 
@@ -227,7 +228,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            handler->PSendSysMessage("|cffff0000[Bot]|r Requires GM3 permission.");
+            BotSendSysMessage(handler, "|cffff0000[Bot]|r Requires GM3 permission.");
             return true;
         }
 
@@ -236,7 +237,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         //   BOTLIST|<total>
         //   BOT|<guid>|<name>|<online 1/0>|<master|NONE>|<stance>
         auto bots = sPlayerBotMgr->GetAllBots();
-        handler->PSendSysMessage("BOTLIST|{}", bots.size());
+        BotSendSysMessage(handler, "BOTLIST|{}", bots.size());
         for (auto const& guid : bots)
         {
             Player* player = ObjectAccessor::FindConnectedPlayer(guid);
@@ -251,7 +252,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 default: break;
             }
 
-            handler->PSendSysMessage("BOT|{}|{}|{}|{}|{}",
+            BotSendSysMessage(handler, "BOT|{}|{}|{}|{}|{}",
                 guid.ToString(),
                 player ? player->GetName() : guid.ToString(),
                 player ? "1" : "0",
@@ -266,9 +267,9 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         char* arg1 = strtok(nullptr, " ");
         if (!arg1)
         {
-            handler->PSendSysMessage("|cffff0000Usage: /bot stance [defensive|passive|aggressive]|r  - set all your bots");
-            handler->PSendSysMessage("|cffff0000Usage: /bot stance $name [defensive|passive|aggressive]|r  - set one bot");
-            handler->PSendSysMessage("|cff00ff00Short: d, p, a|r");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot stance [defensive|passive|aggressive]|r  - set all your bots");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot stance $name [defensive|passive|aggressive]|r  - set one bot");
+            BotSendSysMessage(handler, "|cff00ff00Short: d, p, a|r");
             return true;
         }
 
@@ -304,7 +305,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                     count++;
                 }
             }
-            handler->PSendSysMessage("|cff00ff00Stance set to |cffff00ff{}|r for |cffff00ff{}|r bot(s).",
+            BotSendSysMessage(handler, "|cff00ff00Stance set to |cffff00ff{}|r for |cffff00ff{}|r bot(s).",
                 stanceNames[newStance], count);
             return true;
         }
@@ -312,8 +313,8 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         // Named bot: /bot stance <name> <stance>
         if (!arg2)
         {
-            handler->PSendSysMessage("|cffff0000Usage: /bot stance $name [defensive|passive|aggressive]|r");
-            handler->PSendSysMessage("|cff00ff00Short: d, p, a|r");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot stance $name [defensive|passive|aggressive]|r");
+            BotSendSysMessage(handler, "|cff00ff00Short: d, p, a|r");
             return true;
         }
 
@@ -323,23 +324,23 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' not found.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' not found.|r", playerName);
             return true;
         }
 
         if (!sPlayerBotMgr->IsBot(guid))
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' is not a Bot.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' is not a Bot.|r", playerName);
             return true;
         }
 
         ObjectGuid masterGuid = sPlayerBotMgr->GetMaster(guid);
         if (!isGM3 && masterGuid != currentPlayer->GetGUID())
         {
-            handler->PSendSysMessage("|cffff0000Only the Bot's Master can change its stance!|r");
+            BotSendSysMessage(handler, "|cffff0000Only the Bot's Master can change its stance!|r");
             Player* master = ObjectAccessor::FindConnectedPlayer(masterGuid);
             if (master)
-                handler->PSendSysMessage("|cffffff00Master: |cffff00ff%s|r", master->GetName().c_str());
+                BotSendSysMessage(handler, "|cffffff00Master: |cffff00ff%s|r", master->GetName().c_str());
             return true;
         }
 
@@ -349,14 +350,14 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
 
         sPlayerBotMgr->SetBotStance(guid, newStance);
 
-        handler->PSendSysMessage("|cff00ff00Bot '{}' stance set to |cffff00ff{}|r.", 
+        BotSendSysMessage(handler, "|cff00ff00Bot '{}' stance set to |cffff00ff{}|r.", 
             playerName, stanceNames[newStance]);
 
         Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
         if (bot)
         {
             ChatHandler h(bot->GetSession());
-            h.PSendSysMessage("|cff00ff00[Bot]|r Stance changed to |cffff00ff{}|r.", 
+            BotSendSysMessage(&h, "|cff00ff00[Bot]|r Stance changed to |cffff00ff{}|r.", 
                 stanceNames[newStance]);
         }
         return true;
@@ -366,32 +367,32 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            handler->PSendSysMessage("|cffff0000[Bot]|r Requires GM3 permission.");
+            BotSendSysMessage(handler, "|cffff0000[Bot]|r Requires GM3 permission.");
             return true;
         }
 
         char* playerName = strtok(nullptr, " ");
         if (!playerName)
         {
-            handler->PSendSysMessage("|cffff0000Usage: /bot clearmaster $name|r");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot clearmaster $name|r");
             return true;
         }
 
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' not found.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' not found.|r", playerName);
             return true;
         }
 
         if (!sPlayerBotMgr->IsBot(guid))
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' is not a Bot.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' is not a Bot.|r", playerName);
             return true;
         }
 
         sPlayerBotMgr->ClearMaster(guid);
-        handler->PSendSysMessage("|cff00ff00Master cleared for bot '{}'.|r", playerName);
+        BotSendSysMessage(handler, "|cff00ff00Master cleared for bot '{}'.|r", playerName);
         return true;
     }
 
@@ -399,27 +400,27 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            handler->PSendSysMessage("|cffff0000[Bot]|r Requires GM3 permission.");
+            BotSendSysMessage(handler, "|cffff0000[Bot]|r Requires GM3 permission.");
             return true;
         }
 
         char* playerName = strtok(nullptr, " ");
         if (!playerName)
         {
-            handler->PSendSysMessage("|cffff0000Usage: /bot master $name|r");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot master $name|r");
             return true;
         }
 
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' not found.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' not found.|r", playerName);
             return true;
         }
 
         if (!sPlayerBotMgr->IsBot(guid))
         {
-            handler->PSendSysMessage("|cffff0000Player '{}' is not a Bot.|r", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' is not a Bot.|r", playerName);
             return true;
         }
 
@@ -427,16 +428,16 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         if (!masterGuid.IsEmpty())
         {
             Player* master = ObjectAccessor::FindConnectedPlayer(masterGuid);
-            handler->PSendSysMessage("|cff00ff00Bot '{}' Master: |cffff00ff{}|r", 
+            BotSendSysMessage(handler, "|cff00ff00Bot '{}' Master: |cffff00ff{}|r", 
                 playerName, master ? master->GetName().c_str() : "Offline");
         }
         else
         {
-            handler->PSendSysMessage("|cffffff00Bot '{}' has no Master.|r", playerName);
+            BotSendSysMessage(handler, "|cffffff00Bot '{}' has no Master.|r", playerName);
         }
         return true;
     }
 
-    handler->PSendSysMessage("|cffff0000Unknown bot command: '{}'|r", action);
+    BotSendSysMessage(handler, "|cffff0000Unknown bot command: '{}'|r", action);
     return true;
 }

@@ -1,5 +1,6 @@
 #include "BotPlayerScript.h"
 #include "BotGroupScript.h"
+#include "BotCommon.h"
 #include "PlayerBotMgr.h"
 #include "Group.h"
 #include "ObjectAccessor.h"
@@ -29,10 +30,10 @@ void BotPlayerScript::OnLogin(Player* player)
         return;
 
     ChatHandler handler(player->GetSession());
-    handler.PSendSysMessage("|cff00ff00[Bot]|r Bot mode active.");
-    handler.PSendSysMessage("|cff00ff00[Bot]|r Master: |cffff00ff{}|r", 
+    BotSendSysMessage(&handler, "|cff00ff00[Bot]|r Bot mode active.");
+    BotSendSysMessage(&handler, "|cff00ff00[Bot]|r Master: |cffff00ff{}|r", 
         sPlayerBotMgr->GetMasterName(player->GetGUID()).c_str());
-    handler.PSendSysMessage("|cff00ff00[Bot]|r Stance: |cffff00ffDefensive|r (use /bot stance to change)");
+    BotSendSysMessage(&handler, "|cff00ff00[Bot]|r Stance: |cffff00ffDefensive|r (use /bot stance to change)");
 
     LOG_INFO("playerbots", "[{}] Bot '{}' logged in", PLAYERBOT_VERSION, player->GetName());
 }
@@ -92,7 +93,7 @@ void BotPlayerScript::OnUpdate(Player* player, uint32 p_time)
         {
             _disconnectTimer[player->GetGUID()] = 300000;
             ChatHandler handler(player->GetSession());
-            handler.PSendSysMessage("|cffffff00[Bot]|r Master disconnected. Waiting 5 minutes...");
+            BotSendSysMessage(&handler, "|cffffff00[Bot]|r Master disconnected. Waiting 5 minutes...");
         }
         else
         {
@@ -137,7 +138,7 @@ void BotPlayerScript::OnUpdate(Player* player, uint32 p_time)
             masterGuid = currentLeader;
             master = newLeader;
             ChatHandler handler(player->GetSession());
-            handler.PSendSysMessage("|cff00ff00[Bot]|r Master switched to new leader |cffff00ff{}|r.", 
+            BotSendSysMessage(&handler, "|cff00ff00[Bot]|r Master switched to new leader |cffff00ff{}|r.", 
                 newLeader->GetName());
         }
     }
@@ -254,7 +255,7 @@ void BotPlayerScript::LeaveGroupAndClearMaster(Player* player, const char* reaso
     ResetCombatState(player);
 
     ChatHandler handler(player->GetSession());
-    handler.PSendSysMessage("|cff00ff00[Bot]|r %s Auto-leaving group.", reason);
+    BotSendSysMessage(&handler, "|cff00ff00[Bot]|r %s Auto-leaving group.", reason);
     LOG_INFO("playerbots", "[{}] Bot '{}' left group: {}", 
         PLAYERBOT_VERSION, player->GetName(), reason);
 }

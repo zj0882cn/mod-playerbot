@@ -1,4 +1,5 @@
 #include "BotGroupScript.h"
+#include "BotCommon.h"
 #include "PlayerBotMgr.h"
 #include "Group.h"
 #include "GroupMgr.h"
@@ -49,7 +50,7 @@ void BotGroupScript::OnInviteMember(Group* group, ObjectGuid guid)
     if (!currentMaster.IsEmpty())
     {
         ChatHandler handler(bot->GetSession());
-        handler.PSendSysMessage("|cffff0000[Bot]|r Already has a Master.");
+        BotSendSysMessage(&handler, "|cffff0000[Bot]|r Already has a Master.");
         return;
     }
 
@@ -59,7 +60,7 @@ void BotGroupScript::OnInviteMember(Group* group, ObjectGuid guid)
     {
         group->BroadcastGroupUpdate();
         ChatHandler handler(bot->GetSession());
-        handler.PSendSysMessage("|cff00ff00[Bot]|r |cffff00ff{}|r is now your Master!", 
+        BotSendSysMessage(&handler, "|cff00ff00[Bot]|r |cffff00ff{}|r is now your Master!", 
             inviter->GetName());
         LOG_INFO("playerbots", "[{}] Bot '{}' assigned Master '{}'", 
             PLAYERBOT_VERSION, bot->GetName(), inviter->GetName());
@@ -85,7 +86,7 @@ void BotGroupScript::OnAddMember(Group* group, ObjectGuid guid)
     if (bot)
     {
         ChatHandler handler(bot->GetSession());
-        handler.PSendSysMessage("|cff00ff00[Bot]|r Joined group. Master: |cffff00ff{}|r", 
+        BotSendSysMessage(&handler, "|cff00ff00[Bot]|r Joined group. Master: |cffff00ff{}|r", 
             sPlayerBotMgr->GetMasterName(guid).c_str());
     }
 }
@@ -107,7 +108,7 @@ void BotGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod 
     {
         sPlayerBotMgr->ClearMaster(guid);
         ChatHandler handler(bot->GetSession());
-        handler.PSendSysMessage("|cff00ff00[Bot]|r Removed from group. Master cleared.");
+        BotSendSysMessage(&handler, "|cff00ff00[Bot]|r Removed from group. Master cleared.");
     }
 }
 
