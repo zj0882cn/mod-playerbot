@@ -231,32 +231,32 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             return true;
         }
 
+        // Machine-readable output for the BotCommander client addon.
+        // Format (pipe-separated, no color codes):
+        //   BOTLIST|<total>
+        //   BOT|<guid>|<name>|<online 1/0>|<master|NONE>|<stance>
         auto bots = sPlayerBotMgr->GetAllBots();
-        handler->PSendSysMessage("|cff00ff00=== Bot Players List ({} total) ===|r", bots.size());
-        uint32 index = 1;
+        handler->PSendSysMessage("BOTLIST|{}", bots.size());
         for (auto const& guid : bots)
         {
             Player* player = ObjectAccessor::FindConnectedPlayer(guid);
             ObjectGuid masterGuid = sPlayerBotMgr->GetMaster(guid);
             Player* master = !masterGuid.IsEmpty() ? ObjectAccessor::FindConnectedPlayer(masterGuid) : nullptr;
 
-            if (player)
+            const char* stanceName = "defensive";
+            switch (sPlayerBotMgr->GetBotStance(guid))
             {
-                if (master)
-                {
-                    handler->PSendSysMessage("  {}. |cff00ff00{}|r - Online, Master: |cffff00ff{}|r, Stance: {}",
-                        index++, player->GetName(), master->GetName(), sPlayerBotMgr->GetBotStance(guid));
-                }
-                else
-                {
-                    handler->PSendSysMessage("  {}. |cff00ff00{}|r - Online, |cffff8080No Master|r",
-                        index++, player->GetName());
-                }
+                case PlayerBotMgr::STANCE_PASSIVE:    stanceName = "passive"; break;
+                case PlayerBotMgr::STANCE_AGGRESSIVE: stanceName = "aggressive"; break;
+                default: break;
             }
-            else
-            {
-                handler->PSendSysMessage("  {}. |cffff8080{}|r - Offline", index++, guid.ToString());
-            }
+
+            handler->PSendSysMessage("BOT|{}|{}|{}|{}|{}",
+                guid.ToString(),
+                player ? player->GetName() : guid.ToString(),
+                player ? "1" : "0",
+                master ? master->GetName() : "NONE",
+                stanceName);
         }
         return true;
     }
