@@ -2,6 +2,9 @@
 # Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license: https://github.com/azerothcore/azerothcore-wotlk/blob/master/LICENSE-AGPL3
 #
 
+# PlayerScript API version detection lives in mod-playerbot.cmake
+# (runs after the "modules" target is defined).
+
 AC_ADD_SCRIPT("${CMAKE_CURRENT_SOURCE_DIR}/src/BotCombatLogic.cpp")
 AC_ADD_SCRIPT("${CMAKE_CURRENT_SOURCE_DIR}/src/BotCommandScript.cpp")
 AC_ADD_SCRIPT("${CMAKE_CURRENT_SOURCE_DIR}/src/BotGroupScript.cpp")

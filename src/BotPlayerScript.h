@@ -13,8 +13,17 @@ class BotPlayerScript : public PlayerScript
 public:
     BotPlayerScript();
 
+    // PlayerScript hook names differ across AzerothCore versions:
+    //   older cores: OnLogin/OnUpdate
+    //   newer cores: OnPlayerLogin/OnPlayerUpdate
+    // CMake auto-detects the core and defines PLAYERBOT_NEW_PLAYERSCRIPT accordingly.
+#ifdef PLAYERBOT_NEW_PLAYERSCRIPT
+    void OnPlayerLogin(Player* player) override;
+    void OnPlayerUpdate(Player* player, uint32 p_time) override;
+#else
     void OnLogin(Player* player) override;
     void OnUpdate(Player* player, uint32 p_time) override;
+#endif
 
 private:
     void DoCombat(Player* bot, Unit* target);
