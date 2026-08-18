@@ -16,3 +16,26 @@ if(EXISTS "${PLAYERBOT_PLAYERSCRIPT_HEADER}")
         message(STATUS "mod-playerbot: detected legacy PlayerScript API (OnLogin/OnUpdate)")
     endif()
 endif()
+
+# ---------------------------------------------------------------------------
+# Dynamic git revision
+#
+# Runs `git rev-parse --short HEAD` at (re)configure time so /bot shows the
+# exact commit this binary was built from. To keep it accurate, re-run cmake
+# before rebuilding:
+#   git commit ... && cmake . && make worldserver && restart
+#
+# RULE (user): every restart MUST be preceded by commit + reconfigure + rebuild
+# so the version number always reflects the running code.
+# ---------------------------------------------------------------------------
+execute_process(
+    COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse --short HEAD
+    OUTPUT_VARIABLE PLAYERBOT_REV
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT PLAYERBOT_REV)
+    set(PLAYERBOT_REV "unknown")
+endif()
+message(STATUS "mod-playerbot: revision = ${PLAYERBOT_REV}")
+target_compile_definitions(modules PRIVATE PLAYERBOT_REV="${PLAYERBOT_REV}")

@@ -26,9 +26,12 @@ static std::string BotGuidString(ObjectGuid guid)
 }
 
 #define PLAYERBOT_VERSION "v2.2.0"
-// Git commit this source corresponds to (update on every push so the master
-// can tell from /bot which code the server is running).
-#define PLAYERBOT_REV "b3a3899"
+// Git commit this source corresponds to. Injected by mod-playerbot.cmake at
+// (re)configure time (git rev-parse --short HEAD) so /bot shows the exact
+// commit the running binary was built from. Fallback if not injected.
+#ifndef PLAYERBOT_REV
+#define PLAYERBOT_REV "unknown"
+#endif
 // Compile date/time (auto-embedded at build). Shown in the /bot help so the
 // master can verify the running worldserver was built from the latest code.
 #define PLAYERBOT_BUILD __DATE__ " " __TIME__

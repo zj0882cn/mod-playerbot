@@ -18,8 +18,11 @@
 #include <list>
 
 #define PLAYERBOT_VERSION "v2.2.0"
-// Git commit this source corresponds to (update on every push).
-#define PLAYERBOT_REV "b3a3899"
+// Git commit this source corresponds to. Injected by mod-playerbot.cmake at
+// (re)configure time (git rev-parse --short HEAD). Fallback if not injected.
+#ifndef PLAYERBOT_REV
+#define PLAYERBOT_REV "unknown"
+#endif
 // Compile date/time (auto-embedded at build) - visible in the worldserver
 // startup log so the server admin can verify the running binary is current.
 #define PLAYERBOT_BUILD __DATE__ " " __TIME__
