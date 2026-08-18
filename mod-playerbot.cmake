@@ -27,9 +27,13 @@ endif()
 #
 # RULE (user): every restart MUST be preceded by commit + reconfigure + rebuild
 # so the version number always reflects the running code.
+#
+# NOTE: must use CMAKE_CURRENT_LIST_DIR (this .cmake's dir = the module dir),
+# NOT CMAKE_CURRENT_SOURCE_DIR which points at the AzerothCore repo root and
+# would inject the core's commit instead of the module's.
 # ---------------------------------------------------------------------------
 execute_process(
-    COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse --short HEAD
+    COMMAND git -C "${CMAKE_CURRENT_LIST_DIR}" rev-parse --short HEAD
     OUTPUT_VARIABLE PLAYERBOT_REV
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET
