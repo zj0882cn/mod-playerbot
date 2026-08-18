@@ -203,3 +203,46 @@
 | **运行版** | 本目录编译产物（GUID 协议已验证：`BOTSET;Player-0-00000001;...`）|
 | **已实现功能** | GUID 协议、法力检查(P-006)、增益去重(P-007)、弹药检查(P-008)、自解、净化、打断预防、治疗阈值、角色分工(T/无T奶转DPS)、`GroupHasTank()`、PB_LOG 调试日志(`PlayerBot.DebugLevel` 0-3) |
 | **旧副本** | `/workspace/mod-playerbot`（另一 git 线，内容过时，已停止作为开发/推送源）|
+
+---
+
+## 七、死亡与距离场景回归（R7-R9）
+
+> 依据源码逻辑设计（`BotPlayerScript.cpp`）。验证架构：client 普通玩家=Master，SOAP/GM=控制端，日志/状态经 SOAP + 服务器日志确认。
+
+### R7. Master 死亡场景（源码 L170-191）
+
+| 用例 | 场景 | 步骤 | 预期结果 |
+|------|------|------|----------|
+| R7-T1 | 战斗中死亡 | Master 战斗中死亡 | bot **立即停止战斗**（`CombatStop`）、脱战 |
+| R7-T2 | 战斗中死亡后 | 同上，观察 bot | bot 停止攻击当前目标，**回到跟随 Master** |
+| R7-T3 | 意外死亡 | Master 坠崖/溺水/被秒 | bot 同样停战回跟随，不卡死 |
+| R7-T4 | 死亡后跟随 | Master 死亡状态 | bot 仍执行跟随（跟随死亡目标/灵魂）|
+| R7-T5 | 队长转移 | Master 死亡后队长换新角色（存活）| bot 的 **Master 切换到新队长**（`SetMaster`）|
+
+### R8. Master 距离场景（`UpdateFollow` L576-607 + 跨图 L217-232）
+
+| 用例 | 距离 | 步骤 | 预期结果 |
+|------|------|------|----------|
+| R8-T1 | 近距离(<2000码) | Master 移动 | bot 正常**跑动跟随**（MoveFollow），不瞬移 |
+| R8-T2 | 远距离(>2000码) | Master 跑远 | bot **宠物式召回传送**回身边（非战斗时）|
+| R8-T3 | 跨地图 | Master 换地图 | bot **传送跟随**到 master 身边 |
+| R8-T4 | 跨副本 | Master 进副本(同队) | bot 传送进**同一副本实例** |
+| R8-T5 | 战场/竞技场 | Master 进战场 | bot **不跟随**（预期行为）|
+| R8-T6 | 追击过远 | bot 追击目标离 Master >90码 | 停止追击，**返回跟随** |
+| R8-T7 | 边界~2000码 | Master 在约 2000 码处 | 正常运行，不误触发传送 |
+
+### R9. Bot 死亡场景（源码 L193-215）
+
+| 用例 | 状态 | 步骤 | 预期结果 |
+|------|------|------|----------|
+| R9-T1 | 跟随中死亡 | bot 跟随途中被杀 | 自动去墓地**满血复活** → 回跟随 |
+| R9-T2 | 战斗中死亡 | bot 战斗死亡 | 自动复活，恢复职责 |
+| R9-T3 | 停留中死亡 | bot stay 状态死亡 | 复活后**回到停留位置** |
+| R9-T4 | 攻击中死亡 | bot attack 状态死亡 | 复活后按命令状态恢复 |
+| R9-T5 | Master 不在 | Master 离线/不在世界 | bot **不自动复活**（等待，`if(master...IsInWorld())`）|
+| R9-T6 | 复活条件 | 观察 | 复活仅当 **Master 存活且在世界上**时触发 |
+| R9-T7 | 复活流程 | 观察日志 | `BuildPlayerRepop→RepopAtGraveyard→ResurrectPlayer(满血)→SpawnCorpseBones` |
+
+> 验证途径：`R7/R8` 大部分可经 SOAP（bot set/list 状态）+ worldserver 日志（PB_LOG）观察；
+> 战斗/死亡场景需 client 普通玩家（Master）拉怪触发；`R9` 复活流程看日志关键词 `auto-revived at graveyard`。
