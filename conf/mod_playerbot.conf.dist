@@ -1,0 +1,31 @@
+###############################################################################
+# mod-playerbot configuration
+#
+# This file is copied into the server's conf/ directory at build time and
+# merged into worldserver.conf automatically (AzerothCore module config
+# system). The settings below therefore go into your worldserver.conf, either
+# by the .conf.dist merge or by adding them manually.
+###############################################################################
+
+###############################################################################
+# PlayerBot.DebugLevel
+#   Server-side debug logging for the PlayerBot module. Every hook entry, bot
+#   state change and command is logged to the "playerbots" log filter (which
+#   shows up in the worldserver console + log file).
+#
+#   0 = off (default)   production-quiet; only key lifecycle events are logged
+#                       (bot added/removed, bot login, script registration)
+#   1 = events          + every hook entry (login/update/kill/group hooks),
+#                       every bot state change (master/stance/command/attack
+#                       target/stay/return mode/auto-spells/slot autocast)
+#                       and every /bot command execution
+#   2 = behaviour       + per-tick AI decisions (target selection, DoCombat,
+#                       auto-casts, follow/return movements, recalls)
+#   3 = dump            `bot list` additionally prints every in-memory state
+#                       for each bot (all maps) plus live Player info
+#
+# Default 0 keeps the server quiet in production. Set it to 1-3 only when
+# debugging the module.
+###############################################################################
+
+PlayerBot.DebugLevel = 0

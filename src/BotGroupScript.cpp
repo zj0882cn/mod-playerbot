@@ -8,7 +8,7 @@
 #include "Chat.h"
 #include "Log.h"
 
-#define PLAYERBOT_VERSION "v2.1.0.2"
+#define PLAYERBOT_VERSION "v2.2.0"
 
 BotGroupScript::BotGroupScript() : GroupScript("BotGroupScript", {
     GROUPHOOK_ON_INVITE_MEMBER,
@@ -21,6 +21,9 @@ void BotGroupScript::OnInviteMember(Group* group, ObjectGuid guid)
 {
     if (!sPlayerBotMgr->IsBot(guid))
         return;
+
+    PB_LOG(1, "Hook OnInviteMember: bot '{}' invited to group (leader '{}')",
+        sPlayerBotMgr->GetCharacterName(guid), sPlayerBotMgr->GetCharacterName(group->GetLeaderGUID()));
 
     Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
     if (!bot)
@@ -49,19 +52,37 @@ void BotGroupScript::OnInviteMember(Group* group, ObjectGuid guid)
 
     if (!currentMaster.IsEmpty())
     {
-        ChatHandler handler(bot->GetSession());
-        BotSendSysMessage(&handler, "|cffff0000[Bot]|r Already has a Master.");
+        BotNotify(bot, "|cffff0000[Bot]|r Already has a Master.");
         return;
     }
 
     sPlayerBotMgr->SetMaster(guid, inviterGuid);
 
+    // Simulate the normal "accept invite" flow (HandleGroupAcceptOpcode) so
+    // the client actually builds its group state. A bare AddMember() here
+    // leaves the client stuck in "invited" state (no group UI on either side).
+    group->RemoveInvite(bot);
+    if (!group->IsCreated())
+    {
+        // New group: the leader must be formally created/joined first.
+        Player* leader = ObjectAccessor::FindConnectedPlayer(group->GetLeaderGUID());
+        if (!leader)
+        {
+            group->RemoveAllInvites();
+            return;
+        }
+        group->RemoveInvite(leader);
+        group->Create(leader);
+        sGroupMgr->AddGroup(group);
+    }
+
     if (group->AddMember(bot))
     {
         group->BroadcastGroupUpdate();
-        ChatHandler handler(bot->GetSession());
-        BotSendSysMessage(&handler, "|cff00ff00[Bot]|r |cffff00ff{}|r is now your Master!", 
+        BotNotify(bot, "|cff00ff00[Bot]|r |cffff00ff{}|r is now your Master!", 
             inviter->GetName());
+        PB_LOG(1, "Bot '{}' auto-accepted group invite, master '{}'",
+            bot->GetName(), inviter->GetName());
         LOG_INFO("playerbots", "[{}] Bot '{}' assigned Master '{}'", 
             PLAYERBOT_VERSION, bot->GetName(), inviter->GetName());
     }
@@ -71,6 +92,9 @@ void BotGroupScript::OnAddMember(Group* group, ObjectGuid guid)
 {
     if (!sPlayerBotMgr->IsBot(guid))
         return;
+
+    PB_LOG(1, "Hook OnAddMember: bot '{}' added to group (leader '{}')",
+        sPlayerBotMgr->GetCharacterName(guid), sPlayerBotMgr->GetCharacterName(group->GetLeaderGUID()));
 
     ObjectGuid currentMaster = sPlayerBotMgr->GetMaster(guid);
     if (currentMaster.IsEmpty())
@@ -85,17 +109,20 @@ void BotGroupScript::OnAddMember(Group* group, ObjectGuid guid)
     Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
     if (bot)
     {
-        ChatHandler handler(bot->GetSession());
-        BotSendSysMessage(&handler, "|cff00ff00[Bot]|r Joined group. Master: |cffff00ff{}|r", 
+        BotNotify(bot, "|cff00ff00[Bot]|r Joined group. Master: |cffff00ff{}|r", 
             sPlayerBotMgr->GetMasterName(guid).c_str());
     }
 }
 
-void BotGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod /*method*/, 
-                                    ObjectGuid /*kicker*/, const char* /*reason*/)
+void BotGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod method, 
+                                    ObjectGuid kicker, const char* reason)
 {
     if (!sPlayerBotMgr->IsBot(guid))
         return;
+
+    PB_LOG(1, "Hook OnRemoveMember: bot '{}' removed from group (method {}, kicker '{}', reason '{}')",
+        sPlayerBotMgr->GetCharacterName(guid), int(method),
+        sPlayerBotMgr->GetCharacterName(kicker), reason ? reason : "");
 
     ObjectGuid masterGuid = sPlayerBotMgr->GetMaster(guid);
     if (!masterGuid.IsEmpty() && group && !group->IsMember(masterGuid))
@@ -106,14 +133,15 @@ void BotGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod 
     Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
     if (bot)
     {
+        // Notify master BEFORE clearing, otherwise master info is lost.
+        BotNotify(bot, "|cff00ff00[Bot]|r Removed from group. Master cleared.");
         sPlayerBotMgr->ClearMaster(guid);
-        ChatHandler handler(bot->GetSession());
-        BotSendSysMessage(&handler, "|cff00ff00[Bot]|r Removed from group. Master cleared.");
     }
 }
 
 void BotGroupScript::OnDisband(Group* group)
 {
+    PB_LOG(1, "Hook OnDisband: group disbanded ({} members)", group->GetMembersCount());
     for (auto const& slot : group->GetMemberSlots())
     {
         if (sPlayerBotMgr->IsBot(slot.guid))

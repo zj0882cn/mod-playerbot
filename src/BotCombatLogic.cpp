@@ -1,4 +1,5 @@
 #include "BotPlayerScript.h"
+#include "BotCommon.h"
 #include "PlayerBotMgr.h"
 #include "Player.h"
 #include "Unit.h"
@@ -10,7 +11,7 @@
 #include "Chat.h"
 #include "Log.h"
 
-#define PLAYERBOT_VERSION "v2.1.0.2"
+#define PLAYERBOT_VERSION "v2.2.0"
 
 BotPlayerScript::BotRoleAnalysis BotPlayerScript::AnalyzeBot(Player* bot)
 {
@@ -191,36 +192,176 @@ BotPlayerScript::BotRoleAnalysis BotPlayerScript::AnalyzeBot(Player* bot)
     return result;
 }
 
-void BotPlayerScript::DoCombat(Player* bot, Unit* target)
+// Public wrapper so the command script can trigger combat immediately
+// (pet-style "attack" command).
+void BotPlayerScript::ExecuteBotCombat(Player* bot, Unit* target)
+{
+    PB_LOG(2, "Bot '{}' ExecuteBotCombat target '{}'",
+        bot ? bot->GetName().c_str() : "?", target ? target->GetName() : "?");
+    DoCombat(bot, target);
+}
+
+// Pet-style attack, mirroring PetAI::AttackStart -> DoAttack. Immediately
+// abandons current action, attacks the target (Player::Attack handles
+// melee vs ranged), and chases to the appropriate combat distance.
+// Mirrors PetAI::_canMeleeAttack combatRange: melee classes close into
+// melee range, ranged/healer classes keep their preferred casting distance
+// (a mage must NOT run into melee range). Returns false if unattackable.
+bool BotPlayerScript::ExecuteBotAttack(Player* bot, Unit* target)
+{
+    if (!bot || !target || !target->IsAlive())
+        return false;
+    if (!bot->IsValidAttackTarget(target))
+        return false;
+
+    bot->InterruptNonMeleeSpells(false);
+
+    // Every class has melee auto-attack (Player::Attack(true) sets the
+    // MELEE_ATTACKING state that drives the melee attack loop). Only hunters
+    // additionally have a ranged auto-attack, which is handled by their ranged
+    // skills in combat. Melee classes chase into melee range, ranged/healer
+    // classes keep their preferred casting distance.
+    BotRoleAnalysis analysis = AnalyzeBot(bot);
+    bool isMelee = (analysis.role == BotRoleAnalysis::ROLE_TANK ||
+                    analysis.role == BotRoleAnalysis::ROLE_MELEE_DPS);
+
+    if (bot->Attack(target, true))
+    {
+        PB_LOG(1, "Bot '{}' ATTACK command: attacking '{}' (melee {})",
+            bot->GetName(), target->GetName(), isMelee);
+        bot->GetMotionMaster()->Clear();
+        if (isMelee)
+            bot->GetMotionMaster()->MoveChase(target);
+        else
+            bot->GetMotionMaster()->MoveChase(target, analysis.preferDistance);
+        return true;
+    }
+
+    PB_LOG(1, "Bot '{}' ATTACK command: Player::Attack failed on '{}'",
+        bot->GetName(), target->GetName());
+    return false;
+}
+
+void BotPlayerScript::DoCombat(Player* bot, Unit* target, bool chase)
 {
     if (!bot || !target || !target->IsAlive())
         return;
 
-    BotRoleAnalysis analysis = AnalyzeBot(bot);
+    BotRoleAnalysis const& analysis = GetBotAnalysis(bot);
     float preferDist = analysis.preferDistance;
     float distance = bot->GetDistance(target);
+
+    PB_LOG(2, "Bot '{}' DoCombat target '{}' dist {:.1f} chase {} role {}",
+        bot->GetName(), target->GetName(), distance, chase, int(analysis.role));
 
     bool isMelee = (analysis.role == BotRoleAnalysis::ROLE_TANK ||
                     analysis.role == BotRoleAnalysis::ROLE_MELEE_DPS);
 
-    if (isMelee)
+    // Pet-style target lock: Player::Attack sets m_attacking (GetVictim), our
+    // "current target". The bot acts on this target until it dies, then picks
+    // a new one - it never re-evaluates someone else's target every tick (that
+    // made combat erratic). Melee classes enter the melee-attacking state;
+    // ranged casters just lock the victim without it.
+    if (bot->GetVictim() != target)
+        bot->Attack(target, isMelee);
+
+    // Pet-style: keep the client target set and face the target before
+    // casting/attacking. Pets set the target in Unit::Attack (SetTarget) and
+    // re-face at cast time (PetAI::SetInFront) - not on a timer. Movement
+    // facing is handled automatically by the spline.
+    if (bot->GetTarget() != target->GetGUID())
+        bot->SetTarget(target->GetGUID());
+    // Pet-style facing: always face the target before acting (PetAI::SetInFront
+    // does this unconditionally - a real player keeps facing the target, the
+    // bot must too to land melee swings / ranged shots). The old
+    // HasInArc(M_PI) check only turned when the target was >180° behind, so
+    // the bot kept "fighting sideways" and turned too rarely.
+    bot->SetFacingToObject(target);
+
+    // Only (re)start the chase when we aren't already chasing THIS target -
+    // keeps the ChaseMovementGenerator alive instead of rebuilding it every
+    // tick (a pet keeps its chase; it doesn't recreate it each AI tick).
+    // A stale CHASE generator left over from a previous target that died /
+    // leashed still reports CHASE_MOTION_TYPE while the bot stands still, so
+    // also require that the bot is actually MOVING toward the target - this
+    // rebuilds the chase instead of freezing in place (aggressive bots that
+    // auto-hunt distant targets hit this most).
+    bool chasingTarget = bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE
+                         && bot->GetVictim() == target
+                         && bot->isMoving();
+
+    if (chase)
     {
-        // Melee: close in until within melee attack range.
-        if (distance > bot->GetMeleeRange(target))
+        if (isMelee)
         {
-            bot->GetMotionMaster()->MoveChase(target);
-            return;
+            // Melee: close in until within melee attack range.
+            if (distance > bot->GetMeleeRange(target))
+            {
+                if (!chasingTarget)
+                    bot->GetMotionMaster()->MoveChase(target);
+                return;
+            }
+        }
+        else
+        {
+            // Ranged/healer: keep preferred distance.
+            if (distance > preferDist + 1.0f)
+            {
+                if (!chasingTarget)
+                    bot->GetMotionMaster()->MoveChase(target, preferDist);
+                return;
+            }
         }
     }
     else
     {
-        // Ranged/healer: keep preferred distance.
-        if (distance > preferDist + 1.0f)
+        // Hold position (pet STAY): fight only inside the attack range for
+        // this class - melee uses melee range, ranged casters use their
+        // preferred casting range, and hunters their Auto Shot range (inside
+        // which they shoot AND swing melee when the target closes in - a
+        // hunter is ranged + melee combined). Never chase: a target out of
+        // range makes the bot stop and return to the stay spot.
+        float attackRange = isMelee ? bot->GetMeleeRange(target) : (preferDist + 1.0f);
+        if (distance > attackRange)
         {
-            bot->GetMotionMaster()->MoveChase(target, preferDist);
+            if (bot->IsInCombat())
+                bot->CombatStop(true);
+            float sx, sy, sz;
+            if (sPlayerBotMgr->GetBotStayPosition(bot->GetGUID(), sx, sy, sz))
+            {
+                if (bot->GetDistance(sx, sy, sz) > 1.0f)
+                {
+                    bot->GetMotionMaster()->Clear();
+                    bot->GetMotionMaster()->MovePoint(bot->GetGUID().GetCounter(), sx, sy, sz);
+                }
+            }
             return;
         }
     }
+
+    // ---- Real-client style combat: the skill bar drives the skills. ----
+    // The melee Attack ("axe") is unified: any class with the target in melee
+    // range swings the melee weapon (a hunter too, exactly like the real
+    // client). A hunter in melee range ALSO stops Auto Shot ("the gun") - a
+    // real hunter does not keep "holding the gun" when the target is at his
+    // feet. Auto Shot restarts when the target leaves melee range
+    // (CastAutoSpells only starts it outside melee range), so the weapon
+    // switches by range with no hard-coded weapon logic.
+    if (bot->GetDistance(target) <= bot->GetMeleeRange(target))
+    {
+        if (bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
+            bot->InterruptSpell(CURRENT_AUTOREPEAT_SPELL); // stop the gun, use the axe
+        bot->Attack(target, true);
+    }
+
+    // Skill-bar auto-cast (real client behaviour). CastAutoSpells returns true
+    // if it cast something (Auto Shot started and/or an active skill). Only
+    // when nothing could be cast do we fall back to the hard-coded class
+    // defaults below (action bar empty or everything on cooldown), so a fresh
+    // bot still fights. Healers keep their heal-first logic (they are handled
+    // by DoHealerCombat below, not by the action bar).
+    if (analysis.role != BotRoleAnalysis::ROLE_HEALER && CastAutoSpells(bot, target))
+        return;
 
     switch (analysis.role)
     {
@@ -464,11 +605,25 @@ void BotPlayerScript::DoRangedDPSCombat(Player* bot, Unit* target, BotRoleAnalys
         case CLASS_HUNTER:
         {
             if (!target->HasAura(1978) && CanCastSpell(bot, target, 1978))
-                bot->CastSpell(target, 1978, false);
+                bot->CastSpell(target, 1978, false);          // Serpent Sting
             else if (CanCastSpell(bot, target, 56641))
-                bot->CastSpell(target, 56641, false);
-            if (bot->GetWeaponForAttack(RANGED_ATTACK, true))
-                bot->Attack(target, true);
+                bot->CastSpell(target, 56641, false);         // Steady Shot
+
+            // A hunter is a HYBRID: ranged Auto Shot is the core, but a target
+            // that closes to melee range is also hit with the melee weapon.
+            // Both auto-attack loops run side by side, exactly like a real
+            // hunter (and like a pet that has both melee and ranged attacks).
+            // Within melee range we start the MELEE_ATTACKING loop; at any
+            // range we keep Auto Shot in the CURRENT_AUTOREPEAT_SPELL slot so
+            // the core's _UpdateAutoRepeatSpell fires it every RANGED_ATTACK
+            // tick. Do NOT rely on Attack(target, true) alone - that only
+            // drives melee, useless at ranged distance.
+            if (bot->GetDistance(target) <= bot->GetMeleeRange(target))
+                bot->Attack(target, true);                    // melee auto-attack
+
+            if (bot->GetWeaponForAttack(RANGED_ATTACK, true) &&
+                !bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
+                bot->CastSpell(target, 75, false);            // Auto Shot
             break;
         }
         case CLASS_WARLOCK:
