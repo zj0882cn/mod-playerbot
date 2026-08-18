@@ -447,6 +447,8 @@ Unit* BotPlayerScript::SelectBotTarget(Player* bot, Player* master, bool allowAu
     }
 
     // 4) Aggressive: nearest hostile in MAX_AGGRO_RADIUS.
+    //    同宠物(PetAI)：aggressive 自动选目标 = 45 码内最近敌对，
+    //    不加"离 master 距离"限制；防跑远由追击时的离 master 停止逻辑处理。
     if (allowAutoSelect)
         if (Unit* near = SelectNearestAttackTarget(bot, 45.0f))
         {
@@ -950,9 +952,73 @@ uint32 BotPlayerScript::GetKnownSpell(Player* bot, uint32 baseSpellId)
 // weapons by distance: the bar auto-casts Auto Shot at range and DoCombat's
 // melee attack covers the "axe" when the target is in melee range - exactly
 // like the real client, no hard-coded weapon-switching.
+namespace
+{
+    // P-008: 自解控类技能——效果为移除自身控制效果（昏迷/恐惧/定身/沉默等）
+    bool IsSelfControlRemovalSpell(SpellInfo const* si)
+    {
+        if (!si || !si->HasEffect(SPELL_EFFECT_REMOVE_AURA))
+            return false;
+        return si->HasEffectMechanic(MECHANIC_STUN) || si->HasEffectMechanic(MECHANIC_FEAR) ||
+               si->HasEffectMechanic(MECHANIC_ROOT) || si->HasEffectMechanic(MECHANIC_SILENCE) ||
+               si->HasEffectMechanic(MECHANIC_POLYMORPH) || si->HasEffectMechanic(MECHANIC_SLEEP) ||
+               si->HasEffectMechanic(MECHANIC_CHARM) || si->HasEffectMechanic(MECHANIC_FREEZE) ||
+               si->HasEffectMechanic(MECHANIC_KNOCKOUT) || si->HasEffectMechanic(MECHANIC_DISORIENTED) ||
+               si->HasEffectMechanic(MECHANIC_BANISH) || si->HasEffectMechanic(MECHANIC_HORROR);
+    }
+
+    // P-008: bot 是否被控制
+    bool BotIsControlled(Player* bot)
+    {
+        static const uint32 ctrlMechanics[] = {
+            MECHANIC_STUN, MECHANIC_FEAR, MECHANIC_ROOT, MECHANIC_SILENCE,
+            MECHANIC_POLYMORPH, MECHANIC_SLEEP, MECHANIC_CHARM, MECHANIC_FREEZE,
+            MECHANIC_KNOCKOUT, MECHANIC_DISORIENTED, MECHANIC_BANISH, MECHANIC_HORROR
+        };
+        for (uint32 m : ctrlMechanics)
+            if (bot->HasAuraWithMechanic(m))
+                return true;
+        return false;
+    }
+
+    // P-009: 净化/免疫类技能——移除/免疫 流血/疾病（含 dispel 毒/疾病类型）
+    bool IsCleanseRemovalSpell(SpellInfo const* si)
+    {
+        if (!si || !si->HasEffect(SPELL_EFFECT_REMOVE_AURA))
+            return false;
+        return si->HasEffectMechanic(MECHANIC_BLEED) || si->HasEffectMechanic(MECHANIC_INFECTED) ||
+               si->Dispel == DISPEL_POISON || si->Dispel == DISPEL_DISEASE;
+    }
+
+    // P-009: bot 是否有 流血/疾病 debuff（按机制）
+    bool BotHasCleanseableDebuff(Player* bot)
+    {
+        static const uint32 debuffMechanics[] = { MECHANIC_BLEED, MECHANIC_INFECTED };
+        for (uint32 m : debuffMechanics)
+            if (bot->HasAuraWithMechanic(m))
+                return true;
+        return false;
+    }
+
+    // P-011: 治疗类技能（含 HOT）
+    bool IsHealSpell(SpellInfo const* si)
+    {
+        if (!si)
+            return false;
+        return si->HasEffect(SPELL_EFFECT_HEAL) || si->HasEffect(SPELL_EFFECT_HEAL_PCT) ||
+               si->HasEffect(SPELL_EFFECT_HEAL_MAX_HEALTH) || si->HasEffect(SPELL_EFFECT_HEAL_MECHANICAL) ||
+               si->HasAura(SPELL_AURA_PERIODIC_HEAL);
+    }
+}
+
 bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
 {
     if (!bot || !target)
+        return false;
+
+    // P-010: 施法防打断——正在读条/引导时本 tick 不施放新技能，
+    // 避免每 tick 的自动施法打断自己当前读条。
+    if (bot->IsNonMeleeSpellCast(false))
         return false;
 
     // 1) Collect the auto-cast skill list straight from the bot's OWN first
@@ -1014,6 +1080,12 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
         SpellInfo const* si = sSpellMgr->GetSpellInfo(sid);
         if (!si)
             continue;
+        // P-008: 自解控技能——仅被控时施放，否则跳过（不乱放自利等）
+        if (IsSelfControlRemovalSpell(si) && !BotIsControlled(bot))
+            continue;
+        // P-009: 净化/免疫技能——仅有流血/中毒/疾病 debuff 时施放（不乱放石化形态等）
+        if (IsCleanseRemovalSpell(si) && !BotHasCleanseableDebuff(bot))
+            continue;
         if (IsFriendlyTargetSpell(si))
         {
             Unit* friendly = GetFriendlyCastTarget(bot, si);
@@ -1021,6 +1093,9 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
                 continue;
             // P-007: 已有该增益效果则跳过，避免重复施放耗蓝
             if (friendly->HasAura(sid))
+                continue;
+            // P-011: 治疗类技能——目标血量充足(>=80%)则不施放，避免没事乱放治疗
+            if (IsHealSpell(si) && friendly->GetHealthPct() >= 80.0f)
                 continue;
             if (!CanCastFriendlySpell(bot, friendly, sid))
                 continue;

@@ -201,6 +201,20 @@ void BotPlayerScript::ExecuteBotCombat(Player* bot, Unit* target)
     DoCombat(bot, target);
 }
 
+// 预留接口：团队是否含有明显的 T（坦克）。
+// 当前实现固定返回 false——按"无明确 T、全员 DPS、无专职奶"逻辑处理。
+// 未来实现：扫描 bot 所在队伍的在线成员，对每个成员调用 AnalyzeBot，
+// 若任一成员的 role == ROLE_TANK 则返回 true；此时全队行为切换：
+//   - DPS：安心输出（有 T 拉仇恨）
+//   - 奶：优先治疗 T
+//   - 站位/仇恨：围绕 T 展开
+// 调用点：DoCombat() 中的 groupHasTank 钩子。
+bool BotPlayerScript::GroupHasTank(Player* bot) const
+{
+    // TODO(团队 T 检测, 预留): 当前不检测，默认无明确 T。
+    return false;
+}
+
 // Pet-style attack, mirroring PetAI::AttackStart -> DoAttack. Immediately
 // abandons current action, attacks the target (Player::Attack handles
 // melee vs ranged), and chases to the appropriate combat distance.
@@ -251,11 +265,29 @@ void BotPlayerScript::DoCombat(Player* bot, Unit* target, bool chase)
     float preferDist = analysis.preferDistance;
     float distance = bot->GetDistance(target);
 
+    // 预留钩子：团队 T 检测（当前返回 false）。
+    // 未来实现 GroupHasTank 后，在此根据返回值切换全体 bot 行为
+    // （有 T：DPS 安心输出/奶保 T/站位围绕 T；无 T：奶转 DPS、全员自保）。
+    bool groupHasTank = GroupHasTank(bot);
+
     PB_LOG(2, "Bot '{}' DoCombat target '{}' dist {:.1f} chase {} role {}",
         bot->GetName(), target->GetName(), distance, chase, int(analysis.role));
 
     bool isMelee = (analysis.role == BotRoleAnalysis::ROLE_TANK ||
                     analysis.role == BotRoleAnalysis::ROLE_MELEE_DPS);
+
+    // 宠物参考(PetAI::_needToStop)：离 master 超过 视野-10 码则停止追击，
+    // 防止 bot 脱离队伍跑远引怪，改为返回跟随 master。
+    if (Player* master = ObjectAccessor::FindConnectedPlayer(sPlayerBotMgr->GetMaster(bot->GetGUID())))
+    {
+        if (bot->GetDistance(master) >= master->GetVisibilityRange() - 10.0f)
+        {
+            bot->AttackStop();
+            bot->GetMotionMaster()->Clear();
+            UpdateFollow(bot, master);
+            return;
+        }
+    }
 
     // Pet-style target lock: Player::Attack sets m_attacking (GetVictim), our
     // "current target". The bot acts on this target until it dies, then picks
@@ -354,13 +386,27 @@ void BotPlayerScript::DoCombat(Player* bot, Unit* target, bool chase)
         bot->Attack(target, true);
     }
 
+    // 明显的坦克(T)：直接走坦克专属逻辑（嘲讽/仇恨/减伤/保命），不按技能条
+    // 自动施放——避免坦克把技能条当输出乱放、不拉仇恨不生存。
+    if (analysis.role == BotRoleAnalysis::ROLE_TANK)
+    {
+        DoTankCombat(bot, target, analysis);
+        return;
+    }
+
+    // 无明确 T 时（GroupHasTank()==false，当前默认）：奶职业也转为 DPS
+    // （技能条自动施放 + 远程DPS兜底），不做专职治疗——符合"无专职奶"。
+    // 未来 GroupHasTank 返回 true（团队有明显 T）时，奶职业回归 DoHealerCombat
+    // 专职治疗（保 T 优先）。
+    bool isHealer = analysis.role == BotRoleAnalysis::ROLE_HEALER;
+    bool healAsRole = isHealer && groupHasTank;
+
     // Skill-bar auto-cast (real client behaviour). CastAutoSpells returns true
     // if it cast something (Auto Shot started and/or an active skill). Only
     // when nothing could be cast do we fall back to the hard-coded class
     // defaults below (action bar empty or everything on cooldown), so a fresh
-    // bot still fights. Healers keep their heal-first logic (they are handled
-    // by DoHealerCombat below, not by the action bar).
-    if (analysis.role != BotRoleAnalysis::ROLE_HEALER && CastAutoSpells(bot, target))
+    // bot still fights.
+    if (!healAsRole && CastAutoSpells(bot, target))
         return;
 
     switch (analysis.role)
@@ -369,7 +415,10 @@ void BotPlayerScript::DoCombat(Player* bot, Unit* target, bool chase)
             DoTankCombat(bot, target, analysis);
             break;
         case BotRoleAnalysis::ROLE_HEALER:
-            DoHealerCombat(bot, target, analysis);
+            if (healAsRole)
+                DoHealerCombat(bot, target, analysis);      // 有 T：专职治疗
+            else
+                DoRangedDPSCombat(bot, target, analysis);   // 无 T：奶转 DPS
             break;
         case BotRoleAnalysis::ROLE_MELEE_DPS:
             DoMeleeDPSCombat(bot, target, analysis);

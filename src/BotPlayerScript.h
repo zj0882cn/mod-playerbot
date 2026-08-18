@@ -86,6 +86,11 @@ private:
     // highest known rank of any that is usable on the target. Returns true if
     // a spell was cast this tick.
     bool CastAutoSpells(Player* bot, Unit* target);
+    // 预留接口：团队是否含有明显的 T（坦克）。
+    // 当前固定返回 false（按"无明确 T、全员 DPS、无专职奶"逻辑）。
+    // 未来实现：扫描队伍成员 AnalyzeBot 角色，任一为 ROLE_TANK 则返回 true，
+    // 并据此切换全体 bot 行为（DPS 安心输出 / 奶保 T / 站位围绕 T / 仇恨控制）。
+    bool GroupHasTank(Player* bot) const;
     bool IsMeleeClass(Player* player);
     float GetAttackRange(Player* player);
     float GetFollowAngle(Player* bot);
