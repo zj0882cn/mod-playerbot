@@ -12,6 +12,7 @@
 #include "DBCStores.h"
 #include "MotionMaster.h"
 #include "PetDefines.h"
+#include "CharmInfo.h"
 #include "GridNotifiers.h"
 #include "CellImpl.h"
 #include "Config.h"
@@ -247,9 +248,53 @@ void BotPlayerScript::OnUpdate(Player* player, uint32 p_time)
 
     if (player->HasUnitState(UNIT_STATE_STUNNED) || 
         player->HasUnitState(UNIT_STATE_FLEEING) ||
-        player->HasUnitState(UNIT_STATE_CONTROLLED) ||
-        player->IsCharmed())
+        player->HasUnitState(UNIT_STATE_CONTROLLED))
         return;
+
+    // =====================================================================
+    // 宠物动作条控制（参考宠物条显示机制，bot 用 mod-playerbot AI 执行）：
+    // bot 被 charm 仅用于 master 客户端显示宠物条 + 接收 CMSG_PET_ACTION；
+    // master 点按钮 → 原生 HandlePetActionHelper 设置 CharmInfo 命令状态，
+    // 这里读取【master 命令条】状态映射到 mod-playerbot 命令执行
+    // （保留施法/技能 AI，不退化原生宠物）——一个命令条控制全体 bot。
+    // =====================================================================
+    if (player->IsCharmed())
+    {
+        Unit* barUnit = master->GetFirstControlled();
+        CharmInfo* bar = barUnit ? barUnit->GetCharmInfo() : nullptr;
+        if (bar)
+        {
+            // 攻击命令：攻击 master 当前目标
+            if (bar->IsCommandAttack())
+            {
+                Unit* target = GetMasterAttackTarget(master);
+                if (target && target->IsAlive() && player->IsValidAttackTarget(target))
+                {
+                    sPlayerBotMgr->SetBotAttackTarget(player->GetGUID(), target->GetGUID());
+                    DoCombat(player, target);
+                }
+                return;
+            }
+            // 停留命令
+            if (bar->GetCommandState() == COMMAND_STAY)
+            {
+                sPlayerBotMgr->SetBotCommand(player->GetGUID(), PlayerBotMgr::BOT_COMMAND_STAY);
+                return;
+            }
+            // 姿态（被动/防御/主动）
+            ReactStates react = bar->GetPlayerReactState();
+            if (react == REACT_PASSIVE)
+                sPlayerBotMgr->SetBotStance(player->GetGUID(), PlayerBotMgr::STANCE_PASSIVE);
+            else if (react == REACT_AGGRESSIVE)
+                sPlayerBotMgr->SetBotStance(player->GetGUID(), PlayerBotMgr::STANCE_AGGRESSIVE);
+            else
+                sPlayerBotMgr->SetBotStance(player->GetGUID(), PlayerBotMgr::STANCE_DEFENSIVE);
+            // 默认跟随
+            sPlayerBotMgr->SetBotCommand(player->GetGUID(), PlayerBotMgr::BOT_COMMAND_FOLLOW);
+            UpdateFollow(player, master);
+        }
+        return;
+    }
 
     // =====================================================================
     // Pet-style state machine (mirrors a hunter pet):
