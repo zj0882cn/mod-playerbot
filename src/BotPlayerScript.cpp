@@ -31,6 +31,7 @@
 BotPlayerScript::BotPlayerScript() : PlayerScript("BotPlayerScript", {
     PLAYERHOOK_ON_LOGIN,
     PLAYERHOOK_ON_UPDATE,
+    PLAYERHOOK_ON_LOGOUT,
     PLAYERHOOK_ON_CREATURE_KILL,
 }) { }
 
@@ -53,6 +54,20 @@ void BotPlayerScript::OnLogin(Player* player)
         player->GetName(),
         sPlayerBotMgr->GetMasterName(player->GetGUID()).c_str(),
         sPlayerBotMgr->StanceName(sPlayerBotMgr->GetBotStance(player->GetGUID())));
+}
+
+#ifdef PLAYERBOT_NEW_PLAYERSCRIPT
+void BotPlayerScript::OnPlayerLogout(Player* player)
+#else
+void BotPlayerScript::OnLogout(Player* player)
+#endif
+{
+    // Hard-charmed bots (pet-style bar) carry no real charm aura, so the core's
+    // RemoveCharmAuras() can never clear the CHARMEDBY guid on its own. If we
+    // don't un-charm here, the bot ABORTs the worldserver on logout / shutdown:
+    //   "Unit X has charmer guid when removed from world" (Unit::RemoveFromWorld)
+    if (sPlayerBotMgr->IsBot(player->GetGUID()))
+        UnCharmBot(player);
 }
 
 #ifdef PLAYERBOT_NEW_PLAYERSCRIPT
@@ -624,11 +639,33 @@ void BotPlayerScript::LeaveGroupAndClearMaster(Player* player, const char* reaso
     // Notify master BEFORE clearing master info.
     BotNotify(player, "|cff00ff00[Bot]|r {} Auto-leaving group.", reason);
 
+    // Master is gone (left group / disconnect timeout) - the charm is now
+    // meaningless. Un-charm explicitly (no charm aura to trigger it) so the bot
+    // doesn't keep a stale CHARMEDBY guid that would ABORT on removal.
+    UnCharmBot(player);
+
     sPlayerBotMgr->ClearMaster(player->GetGUID());
     ResetCombatState(player);
 
     LOG_INFO("playerbots", "[{}] Bot '{}' left group: {}", 
         PLAYERBOT_VERSION, player->GetName(), reason);
+}
+
+void BotPlayerScript::UnCharmBot(Player* bot)
+{
+    if (!bot || !bot->IsCharmed())
+        return;
+    Unit* charmer = bot->GetCharmer();
+    if (!charmer)
+        return;
+
+    // Clear pet-style command state first, then release the native charm so
+    // the bot no longer appears as a controlled unit to the charmer.
+    sPlayerBotMgr->ClearBotCommand(bot->GetGUID());
+    sPlayerBotMgr->SetBotAttackTarget(bot->GetGUID(), ObjectGuid::Empty);
+    if (charmer->IsPlayer())
+        charmer->ToPlayer()->SetCharm(bot, false);
+    PB_LOG(1, "Bot '{}' uncharmed from '{}'", bot->GetName(), charmer->GetName());
 }
 
 void BotPlayerScript::ResetCombatState(Player* bot)
