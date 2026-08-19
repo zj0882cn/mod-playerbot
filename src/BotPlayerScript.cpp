@@ -1280,6 +1280,7 @@ float BotPlayerScript::CalculateAverageItemLevel(Player* player)
 }
 
 extern void AddBotCommandScripts();
+extern void AddBotCommandBarScripts();
 
 void AddPlayerBotScripts()
 {
@@ -1294,5 +1295,6 @@ void AddPlayerBotScripts()
     new BotPlayerScript();
     new BotGroupScript();
     AddBotCommandScripts();
+    AddBotCommandBarScripts();
     LOG_INFO("playerbots", "[{} (rev {}, built {})] PlayerBot scripts registered successfully!", PLAYERBOT_VERSION, PLAYERBOT_REV, PLAYERBOT_BUILD);
 }

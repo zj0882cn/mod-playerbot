@@ -6,6 +6,7 @@
 # (runs after the "modules" target is defined).
 
 AC_ADD_SCRIPT("${CMAKE_CURRENT_SOURCE_DIR}/src/BotCombatLogic.cpp")
+AC_ADD_SCRIPT("${CMAKE_CURRENT_SOURCE_DIR}/src/BotCommandBar.cpp")
 AC_ADD_SCRIPT("${CMAKE_CURRENT_SOURCE_DIR}/src/BotCommandScript.cpp")
 AC_ADD_SCRIPT("${CMAKE_CURRENT_SOURCE_DIR}/src/BotGroupScript.cpp")
 AC_ADD_SCRIPT("${CMAKE_CURRENT_SOURCE_DIR}/src/BotPlayerScript.cpp")

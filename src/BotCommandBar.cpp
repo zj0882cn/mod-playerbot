@@ -1,0 +1,186 @@
+#include "BotCommandBar.h"
+#include "AllSpellScript.h"
+#include "BotCommon.h"
+#include "PlayerBotMgr.h"
+#include "BotPlayerScript.h"
+#include "ObjectAccessor.h"
+#include "Spell.h"
+#include "SpellInfo.h"
+#include "Unit.h"
+#include "Log.h"
+
+// =====================================================================
+// 命令法术表：复用现有 DBC 法术 ID（learnSpell 不检查职业/种族，任意 master
+// 可临时学会）。图标/名字来自 DBC 原法术（先占位，后续可按需调整 ID 或 DBC）。
+// 命令法术被 OnSpellCheckCast 拦截（res=失败），不会真正施放。
+// =====================================================================
+const std::vector<BotBarCommand> g_botBarCommands = {
+    { "attack",            133, 0 },   // Fireball
+    { "follow",            585, 1 },   // Smite
+    { "stay",              686, 2 },   // Shadow Bolt
+    { "stance-passive",    589, 3 },   // Shadow Word: Pain
+    { "stance-defensive",  809, 4 },   // Moonfire
+    { "stance-aggressive", 348, 5 },   // Immolate
+    { "return",            120, 6 },   // Conjure Water
+};
+
+bool IsBotBarSpell(uint32 spellId)
+{
+    for (auto const& cmd : g_botBarCommands)
+        if (cmd.spellId == spellId)
+            return true;
+    return false;
+}
+
+// ---- 命令执行（对 master 的全体 bot，单条控全体）----
+void ExecuteBotBarCommand(Player* master, uint32 spellId, Unit* explTarget)
+{
+    if (!master)
+        return;
+
+    std::set<ObjectGuid> bots = sPlayerBotMgr->GetBotsByMaster(master->GetGUID());
+    uint32 count = 0;
+
+    for (auto const& botGuid : bots)
+    {
+        Player* bot = ObjectAccessor::FindConnectedPlayer(botGuid);
+        if (!bot || !bot->IsInWorld())
+            continue;
+
+        switch (spellId)
+        {
+            case 133: // attack：攻击选中目标（无则用 master 当前目标）
+            {
+                Unit* target = explTarget;
+                if (!target || !target->IsAlive() || !bot->IsValidAttackTarget(target))
+                    target = nullptr;
+                if (!target)
+                {
+                    target = master->GetVictim();
+                    if (!target || !target->IsAlive())
+                    {
+                        ObjectGuid tg = master->GetTarget();
+                        if (!tg.IsEmpty())
+                            target = ObjectAccessor::GetUnit(*master, tg);
+                    }
+                }
+                if (target && target->IsAlive() && bot->IsValidAttackTarget(target))
+                {
+                    sPlayerBotMgr->SetBotAttackTarget(botGuid, target->GetGUID());
+                    sPlayerBotMgr->SetBotCommand(botGuid, PlayerBotMgr::BOT_COMMAND_ATTACK);
+                    BotPlayerScript::ExecuteBotAttack(bot, target);
+                    ++count;
+                }
+                break;
+            }
+            case 585: // follow
+                sPlayerBotMgr->SetBotCommand(botGuid, PlayerBotMgr::BOT_COMMAND_FOLLOW);
+                sPlayerBotMgr->SetBotAttackTarget(botGuid, ObjectGuid::Empty);
+                sPlayerBotMgr->ClearBotStayPosition(botGuid);
+                sPlayerBotMgr->SetBotReturnMode(botGuid, false);
+                BotPlayerScript::ExecuteBotFollow(bot, master);
+                ++count;
+                break;
+            case 686: // stay
+                sPlayerBotMgr->SetBotCommand(botGuid, PlayerBotMgr::BOT_COMMAND_STAY);
+                sPlayerBotMgr->SetBotAttackTarget(botGuid, ObjectGuid::Empty);
+                sPlayerBotMgr->SetBotStayPosition(botGuid,
+                    bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+                sPlayerBotMgr->SetBotReturnMode(botGuid, true);
+                if (bot->IsInCombat())
+                    bot->CombatStop(true);
+                bot->InterruptNonMeleeSpells(false);
+                bot->GetMotionMaster()->Clear();
+                bot->GetMotionMaster()->MoveIdle();
+                ++count;
+                break;
+            case 589: // stance passive
+                sPlayerBotMgr->SetBotStance(botGuid, PlayerBotMgr::STANCE_PASSIVE);
+                ++count;
+                break;
+            case 809: // stance defensive
+                sPlayerBotMgr->SetBotStance(botGuid, PlayerBotMgr::STANCE_DEFENSIVE);
+                ++count;
+                break;
+            case 348: // stance aggressive
+                sPlayerBotMgr->SetBotStance(botGuid, PlayerBotMgr::STANCE_AGGRESSIVE);
+                ++count;
+                break;
+            case 120: // return：传送回 master 身边
+                sPlayerBotMgr->ClearBotCommand(botGuid);
+                sPlayerBotMgr->SetBotAttackTarget(botGuid, ObjectGuid::Empty);
+                bot->InterruptNonMeleeSpells(false);
+                bot->GetMotionMaster()->Clear();
+                bot->TeleportTo(master->GetMapId(),
+                    master->GetPositionX(), master->GetPositionY(),
+                    master->GetPositionZ(), master->GetOrientation());
+                ++count;
+                break;
+            default:
+                break;
+        }
+    }
+
+    PB_LOG(1, "Bar command spell {} by '{}' executed on {} bot(s)",
+        spellId, master->GetName(), count);
+}
+
+// ---- 激活/取消命令条 ----
+void BotBarApply(Player* master)
+{
+    if (!master)
+        return;
+    for (auto const& cmd : g_botBarCommands)
+    {
+        master->learnSpell(cmd.spellId, true);                       // temporary, 不落库
+        master->addActionButton(cmd.slot, cmd.spellId, ACTION_BUTTON_SPELL);
+    }
+    master->SendActionButtons(1);
+    PB_LOG(1, "Bar apply to '{}': {} command spells learned + action bar sent",
+        master->GetName(), g_botBarCommands.size());
+}
+
+void BotBarRemove(Player* master)
+{
+    if (!master)
+        return;
+    for (auto const& cmd : g_botBarCommands)
+    {
+        master->removeSpell(cmd.spellId, SPEC_MASK_ALL, true);       // 只移除临时法术
+        master->removeActionButton(cmd.slot);
+    }
+    master->SendActionButtons(1);
+    PB_LOG(1, "Bar remove from '{}'", master->GetName());
+}
+
+// ---- AllSpellScript 钩子：识别命令法术，执行命令并阻止施法 ----
+class BotAllSpellScript : public AllSpellScript
+{
+public:
+    BotAllSpellScript() : AllSpellScript("bot_all_spell") { }
+
+    void OnSpellCheckCast(Spell* spell, bool /*strict*/, SpellCastResult& res) override
+    {
+        if (!spell)
+            return;
+        Unit* caster = spell->GetCaster();
+        if (!caster || !caster->IsPlayer())
+            return;
+
+        SpellInfo const* spellInfo = spell->GetSpellInfo();
+        if (!spellInfo || !IsBotBarSpell(spellInfo->Id))
+            return;
+
+        Player* master = caster->ToPlayer();
+        Unit* target = spell->m_targets.GetUnitTarget();
+
+        // 执行命令，然后让这次施法失败（不真正施放）
+        ExecuteBotBarCommand(master, spellInfo->Id, target);
+        res = SPELL_FAILED_INTERRUPTED;
+    }
+};
+
+void AddBotCommandBarScripts()
+{
+    new BotAllSpellScript();
+}

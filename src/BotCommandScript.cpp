@@ -1,6 +1,7 @@
 #include "BotCommandScript.h"
 #include "BotCommon.h"
 #include "BotPlayerScript.h"
+#include "BotCommandBar.h"
 #include "PlayerBotMgr.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -235,10 +236,17 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     // 普通动作条任意位置。slot 0-143 对应全部 7 条命令条(每条 12 格)。
     if (cmd == "testbar")
     {
-        uint32 slot = 0;
+        // /bot testbar <start> [end]  -- 把 master 已学会的第一个主动法术填进
+        // 槽位范围 start..end(默认=start), 并下发 SMSG_ACTION_BUTTONS。
+        // 用途: 验证客户端动作条显示边界(144=MAX, 客户端显示到哪格?)。
+        uint32 start = 0, end = 0;
         char* slotArg = strtok(nullptr, " ");
         if (slotArg)
-            slot = static_cast<uint32>(strtoul(slotArg, nullptr, 10));
+            start = static_cast<uint32>(strtoul(slotArg, nullptr, 10));
+        char* endArg = strtok(nullptr, " ");
+        end = endArg ? static_cast<uint32>(strtoul(endArg, nullptr, 10)) : start;
+        if (end < start)
+            std::swap(start, end);
 
         // 取 master 已学会的第一个主动法术(保证 addActionButton 校验通过)
         uint32 spellId = 0;
@@ -259,13 +267,40 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             return true;
         }
 
-        ActionButton* ab = currentPlayer->addActionButton(slot, spellId, ACTION_BUTTON_SPELL);
-        if (ab)
+        uint32 ok = 0;
+        for (uint32 slot = start; slot <= end && slot < MAX_ACTION_BUTTONS; ++slot)
+            if (currentPlayer->addActionButton(slot, spellId, ACTION_BUTTON_SPELL))
+                ++ok;
+        if (ok)
             currentPlayer->SendActionButtons(1);
-        BotSendSysMessage(handler, "BOTACTION;testbar;slot={};spell={};{}",
-            slot, spellId, ab ? "ok" : "fail");
-        PB_LOG(1, "Command 'testbar' by '{}': slot {} spell {} {}",
-            currentPlayer->GetName(), slot, spellId, ab ? "ok" : "fail");
+        BotSendSysMessage(handler, "BOTACTION;testbar;range={}-{};spell={};filled={}/{}",
+            start, end, spellId, ok, (end - start + 1));
+        PB_LOG(1, "Command 'testbar' by '{}': range {}-{} spell {} filled {}/{}",
+            currentPlayer->GetName(), start, end, spellId, ok, (end - start + 1));
+        return true;
+    }
+
+    // ---- 命令动作条 (P-016)：/bot bar [on|off] ----
+    // on: 临时学会命令法术 + 塞进普通动作条并下发（完全内存）
+    // off: 移除临时法术 + 清空按钮
+    if (cmd == "bar")
+    {
+        std::string sub = "on";
+        char* subArg = strtok(nullptr, " ");
+        if (subArg)
+            sub = subArg;
+        std::transform(sub.begin(), sub.end(), sub.begin(), ::tolower);
+
+        if (sub == "off" || sub == "remove")
+        {
+            BotBarRemove(currentPlayer);
+            BotSendSysMessage(handler, "BOTACTION;bar;off");
+        }
+        else
+        {
+            BotBarApply(currentPlayer);
+            BotSendSysMessage(handler, "BOTACTION;bar;on");
+        }
         return true;
     }
 
