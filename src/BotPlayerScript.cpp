@@ -225,9 +225,30 @@ void BotPlayerScript::OnUpdate(Player* player, uint32 p_time)
         return;
     }
 
+    // =====================================================================
+    // 宠物机制（最简版，P-015）：bot 认主且 master 在线 → charm bot，
+    // master 客户端显示宠物条（攻击/跟随/停留/姿态），按钮经
+    // CMSG_PET_ACTION → HandlePetActionHelper 的原生 charmed-player 逻辑控制 bot。
+    // bot 被 charm 后走下方 IsCharmed() 分支让位，mod-playerbot AI 不干预。
+    // =====================================================================
+    if (!player->IsCharmed())
+    {
+        master->SetCharm(player, true);
+        if (!player->GetCharmInfo())
+        {
+            player->InitCharmInfo();
+            player->GetCharmInfo()->InitCharmCreateSpells();
+        }
+        if (master->ToPlayer())
+            master->ToPlayer()->CharmSpellInitialize();
+        PB_LOG(1, "Bot '{}' charmed by master '{}' (pet-style bar)",
+            player->GetName(), master->GetName());
+    }
+
     if (player->HasUnitState(UNIT_STATE_STUNNED) || 
         player->HasUnitState(UNIT_STATE_FLEEING) ||
-        player->HasUnitState(UNIT_STATE_CONTROLLED))
+        player->HasUnitState(UNIT_STATE_CONTROLLED) ||
+        player->IsCharmed())
         return;
 
     // =====================================================================
