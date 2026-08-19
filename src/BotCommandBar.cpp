@@ -131,7 +131,7 @@ void ExecuteBotBarCommand(Player* master, uint32 spellId, Unit* explTarget)
             break;
         }
     if (WorldSession* session = master->GetSession())
-        session->SendNotification("BotBar: %s (%u bot)", cmdName, count);
+        session->SendAreaTriggerMessage("BotBar: {} ({} bot)", cmdName, count);
 
     PB_LOG(1, "Bar command '{}' (spell {}) by '{}' executed on {} bot(s)",
         cmdName, spellId, master->GetName(), count);
