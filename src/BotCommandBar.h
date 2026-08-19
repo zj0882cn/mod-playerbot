@@ -19,12 +19,12 @@
 //   - 完全内存：命令表在代码、临时法术不落玩家数据、无任何新数据库表
 // =====================================================================
 
-// 一个命令 = 一个复用的现有法术 + 一个动作条槽位
+// 一个命令 = 一个复用的现有法术 + 一个或多个动作条槽位
 struct BotBarCommand
 {
-    const char* name;    // 命令名（日志用）
-    uint32 spellId;      // 复用的现有 DBC 法术 ID
-    uint8  slot;         // 动作条槽位 0-143
+    const char* name;        // 命令名（日志/反馈用）
+    uint32 spellId;          // 复用的现有 DBC 法术 ID
+    std::vector<uint8> slots; // 动作条槽位 0-143（可多个位置）
 };
 
 extern const std::vector<BotBarCommand> g_botBarCommands;

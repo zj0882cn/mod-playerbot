@@ -15,17 +15,19 @@
 // 可临时学会）。图标/名字来自 DBC 原法术（先占位，后续可按需调整 ID 或 DBC）。
 // 命令法术被 OnSpellCheckCast 拦截（res=失败），不会真正施放。
 // =====================================================================
-// 动作条槽位约定(3.3.5): 技能栏1=0-11(主动作条), 技能栏2=12-23, ...
-// 84-143 = 后台预留区(客户端默认隐藏)。实验: attack 单独放 84(84+是否显示),
-// 其余暂留技能栏2(12-18)。
+// 动作条槽位约定(3.3.5): 技能栏1=0-11(常驻), 2=12-23, 3=24-35, 4=36-47,
+// 5=48-59, 6=60-71, 7=72-83, 8=84-95, ... 84+=后台预留区。
+// 【彻底验证】每个命令放多个位置: 技能栏2(12-18) + 从84起每隔12格全放一遍
+// (84/96/108/120/132 每组7个)。看客户端默认这些技能栏显示在哪里。
+// 所有法术ID已在 Spell.dbc 验证有效。
 const std::vector<BotBarCommand> g_botBarCommands = {
-    { "attack",            133, 84 },  // Fireball   ← 实验: 后台预留区
-    { "follow",            585, 13 },  // Smite
-    { "stay",              686, 14 },  // Shadow Bolt
-    { "stance-passive",    589, 15 },  // Shadow Word: Pain
-    { "stance-defensive",  809, 16 },  // Moonfire
-    { "stance-aggressive", 348, 17 },  // Immolate
-    { "return",            120, 18 },  // Conjure Water
+    { "attack",            133, { 12,  84,  96, 108, 120, 132 } },  // Fireball
+    { "follow",            585, { 13,  85,  97, 109, 121, 133 } },  // Smite
+    { "stay",              686, { 14,  86,  98, 110, 122, 134 } },  // Shadow Bolt
+    { "stance-passive",    589, { 15,  87,  99, 111, 123, 135 } },  // SW:P
+    { "stance-defensive",  172, { 16,  88, 100, 112, 124, 136 } },  // Corruption
+    { "stance-aggressive", 348, { 17,  89, 101, 113, 125, 137 } },  // Immolate
+    { "return",            120, { 18,  90, 102, 114, 126, 138 } },  // Conjure Water
 };
 
 bool IsBotBarSpell(uint32 spellId)
@@ -148,11 +150,15 @@ void BotBarApply(Player* master)
     for (auto const& cmd : g_botBarCommands)
     {
         master->learnSpell(cmd.spellId, true);                       // temporary, 不落库
-        master->addActionButton(cmd.slot, cmd.spellId, ACTION_BUTTON_SPELL);
+        // addActionButton 默认标 NEW(落库), 但临时法术不落库→重登按钮会因 HasSpell
+        // 失败被删。设 UNCHANGED 让按钮也纯内存(不落库), 由登录时重新 apply 恢复。
+        for (uint8 slot : cmd.slots)
+            if (ActionButton* ab = master->addActionButton(slot, cmd.spellId, ACTION_BUTTON_SPELL))
+                ab->uState = ACTIONBUTTON_UNCHANGED;
     }
     master->SendActionButtons(1);
-    PB_LOG(1, "Bar apply to '{}': {} command spells learned + action bar sent",
-        master->GetName(), g_botBarCommands.size());
+    PB_LOG(1, "Bar apply to '{}': {} commands across {} slots + action bar sent",
+        master->GetName(), g_botBarCommands.size(), g_botBarCommands.size() * g_botBarCommands[0].slots.size());
 }
 
 void BotBarRemove(Player* master)
@@ -162,7 +168,8 @@ void BotBarRemove(Player* master)
     for (auto const& cmd : g_botBarCommands)
     {
         master->removeSpell(cmd.spellId, SPEC_MASK_ALL, true);       // 只移除临时法术
-        master->removeActionButton(cmd.slot);
+        for (uint8 slot : cmd.slots)
+            master->removeActionButton(slot);
     }
     master->SendActionButtons(1);
     PB_LOG(1, "Bar remove from '{}'", master->GetName());
