@@ -7,6 +7,7 @@
 #include "Spell.h"
 #include "SpellInfo.h"
 #include "Unit.h"
+#include "WorldSession.h"
 #include "Log.h"
 
 // =====================================================================
@@ -121,8 +122,19 @@ void ExecuteBotBarCommand(Player* master, uint32 spellId, Unit* explTarget)
         }
     }
 
-    PB_LOG(1, "Bar command spell {} by '{}' executed on {} bot(s)",
-        spellId, master->GetName(), count);
+    // 触发反馈：屏幕中央通知 master 触发了什么命令、影响了几个 bot
+    const char* cmdName = "?";
+    for (auto const& c : g_botBarCommands)
+        if (c.spellId == spellId)
+        {
+            cmdName = c.name;
+            break;
+        }
+    if (WorldSession* session = master->GetSession())
+        session->SendNotification("BotBar: %s (%u bot)", cmdName, count);
+
+    PB_LOG(1, "Bar command '{}' (spell {}) by '{}' executed on {} bot(s)",
+        cmdName, spellId, master->GetName(), count);
 }
 
 // ---- 激活/取消命令条 ----
