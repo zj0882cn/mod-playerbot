@@ -31,7 +31,6 @@
 BotPlayerScript::BotPlayerScript() : PlayerScript("BotPlayerScript", {
     PLAYERHOOK_ON_LOGIN,
     PLAYERHOOK_ON_UPDATE,
-    PLAYERHOOK_ON_LOGOUT,
     PLAYERHOOK_ON_CREATURE_KILL,
 }) { }
 
@@ -54,20 +53,6 @@ void BotPlayerScript::OnLogin(Player* player)
         player->GetName(),
         sPlayerBotMgr->GetMasterName(player->GetGUID()).c_str(),
         sPlayerBotMgr->StanceName(sPlayerBotMgr->GetBotStance(player->GetGUID())));
-}
-
-#ifdef PLAYERBOT_NEW_PLAYERSCRIPT
-void BotPlayerScript::OnPlayerLogout(Player* player)
-#else
-void BotPlayerScript::OnLogout(Player* player)
-#endif
-{
-    // Hard-charmed bots (pet-style bar) carry no real charm aura, so the core's
-    // RemoveCharmAuras() can never clear the CHARMEDBY guid on its own. If we
-    // don't un-charm here, the bot ABORTs the worldserver on logout / shutdown:
-    //   "Unit X has charmer guid when removed from world" (Unit::RemoveFromWorld)
-    if (sPlayerBotMgr->IsBot(player->GetGUID()))
-        UnCharmBot(player);
 }
 
 #ifdef PLAYERBOT_NEW_PLAYERSCRIPT
@@ -241,75 +226,10 @@ void BotPlayerScript::OnUpdate(Player* player, uint32 p_time)
         return;
     }
 
-    // =====================================================================
-    // 宠物机制（最简版，P-015）：bot 认主且 master 在线 → charm bot，
-    // master 客户端显示宠物条（攻击/跟随/停留/姿态），按钮经
-    // CMSG_PET_ACTION → HandlePetActionHelper 的原生 charmed-player 逻辑控制 bot。
-    // bot 被 charm 后走下方 IsCharmed() 分支让位，mod-playerbot AI 不干预。
-    // =====================================================================
-    if (!player->IsCharmed())
-    {
-        master->SetCharm(player, true);
-        if (!player->GetCharmInfo())
-        {
-            player->InitCharmInfo();
-            player->GetCharmInfo()->InitCharmCreateSpells();
-        }
-        if (master->ToPlayer())
-            master->ToPlayer()->CharmSpellInitialize();
-        PB_LOG(1, "Bot '{}' charmed by master '{}' (pet-style bar)",
-            player->GetName(), master->GetName());
-    }
-
     if (player->HasUnitState(UNIT_STATE_STUNNED) || 
         player->HasUnitState(UNIT_STATE_FLEEING) ||
         player->HasUnitState(UNIT_STATE_CONTROLLED))
         return;
-
-    // =====================================================================
-    // 宠物动作条控制（参考宠物条显示机制，bot 用 mod-playerbot AI 执行）：
-    // bot 被 charm 仅用于 master 客户端显示宠物条 + 接收 CMSG_PET_ACTION；
-    // master 点按钮 → 原生 HandlePetActionHelper 设置 CharmInfo 命令状态，
-    // 这里读取【master 命令条】状态映射到 mod-playerbot 命令执行
-    // （保留施法/技能 AI，不退化原生宠物）——一个命令条控制全体 bot。
-    // =====================================================================
-    if (player->IsCharmed())
-    {
-        Unit* barUnit = master->GetFirstControlled();
-        CharmInfo* bar = barUnit ? barUnit->GetCharmInfo() : nullptr;
-        if (bar)
-        {
-            // 攻击命令：攻击 master 当前目标
-            if (bar->IsCommandAttack())
-            {
-                Unit* target = GetMasterAttackTarget(master);
-                if (target && target->IsAlive() && player->IsValidAttackTarget(target))
-                {
-                    sPlayerBotMgr->SetBotAttackTarget(player->GetGUID(), target->GetGUID());
-                    DoCombat(player, target);
-                }
-                return;
-            }
-            // 停留命令
-            if (bar->GetCommandState() == COMMAND_STAY)
-            {
-                sPlayerBotMgr->SetBotCommand(player->GetGUID(), PlayerBotMgr::BOT_COMMAND_STAY);
-                return;
-            }
-            // 姿态（被动/防御/主动）
-            ReactStates react = bar->GetPlayerReactState();
-            if (react == REACT_PASSIVE)
-                sPlayerBotMgr->SetBotStance(player->GetGUID(), PlayerBotMgr::STANCE_PASSIVE);
-            else if (react == REACT_AGGRESSIVE)
-                sPlayerBotMgr->SetBotStance(player->GetGUID(), PlayerBotMgr::STANCE_AGGRESSIVE);
-            else
-                sPlayerBotMgr->SetBotStance(player->GetGUID(), PlayerBotMgr::STANCE_DEFENSIVE);
-            // 默认跟随
-            sPlayerBotMgr->SetBotCommand(player->GetGUID(), PlayerBotMgr::BOT_COMMAND_FOLLOW);
-            UpdateFollow(player, master);
-        }
-        return;
-    }
 
     // =====================================================================
     // Pet-style state machine (mirrors a hunter pet):
@@ -639,33 +559,11 @@ void BotPlayerScript::LeaveGroupAndClearMaster(Player* player, const char* reaso
     // Notify master BEFORE clearing master info.
     BotNotify(player, "|cff00ff00[Bot]|r {} Auto-leaving group.", reason);
 
-    // Master is gone (left group / disconnect timeout) - the charm is now
-    // meaningless. Un-charm explicitly (no charm aura to trigger it) so the bot
-    // doesn't keep a stale CHARMEDBY guid that would ABORT on removal.
-    UnCharmBot(player);
-
     sPlayerBotMgr->ClearMaster(player->GetGUID());
     ResetCombatState(player);
 
     LOG_INFO("playerbots", "[{}] Bot '{}' left group: {}", 
         PLAYERBOT_VERSION, player->GetName(), reason);
-}
-
-void BotPlayerScript::UnCharmBot(Player* bot)
-{
-    if (!bot || !bot->IsCharmed())
-        return;
-    Unit* charmer = bot->GetCharmer();
-    if (!charmer)
-        return;
-
-    // Clear pet-style command state first, then release the native charm so
-    // the bot no longer appears as a controlled unit to the charmer.
-    sPlayerBotMgr->ClearBotCommand(bot->GetGUID());
-    sPlayerBotMgr->SetBotAttackTarget(bot->GetGUID(), ObjectGuid::Empty);
-    if (charmer->IsPlayer())
-        charmer->ToPlayer()->SetCharm(bot, false);
-    PB_LOG(1, "Bot '{}' uncharmed from '{}'", bot->GetName(), charmer->GetName());
 }
 
 void BotPlayerScript::ResetCombatState(Player* bot)

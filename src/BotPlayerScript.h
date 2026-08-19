@@ -22,11 +22,9 @@ public:
 #ifdef PLAYERBOT_NEW_PLAYERSCRIPT
     void OnPlayerLogin(Player* player) override;
     void OnPlayerUpdate(Player* player, uint32 p_time) override;
-    void OnPlayerLogout(Player* player) override;
 #else
     void OnLogin(Player* player) override;
     void OnUpdate(Player* player, uint32 p_time) override;
-    void OnLogout(Player* player) override;
     // Called the instant the bot's ATTACK-command target dies (mirrors
     // PetAI::KilledUnit): clear the command and return to follow immediately
     // instead of waiting for the next AI tick to notice the target is gone.
@@ -136,12 +134,6 @@ private:
     void DoRangedDPSCombat(Player* bot, Unit* target, BotRoleAnalysis const& analysis);
 
     void LeaveGroupAndClearMaster(Player* player, const char* reason);
-    // Hard-charmed bots (pet-style bar) carry no real charm aura, so the core's
-    // RemoveCharmAuras() can never clear the CHARMEDBY guid on its own. Call
-    // this (on logout / master disconnect) to explicitly SetCharm(false) and
-    // clear the bot command state, or RemoveFromWorld() ABORTs with
-    // "Unit X has charmer guid when removed from world".
-    void UnCharmBot(Player* bot);
 
     // Low-frequency housekeeping timer (mirrors PetAI::m_updateAlliesTimer):
     // drives the role-analysis cache refresh (~1s).
