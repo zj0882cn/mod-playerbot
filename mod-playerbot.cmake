@@ -32,6 +32,21 @@ endif()
 # NOT CMAKE_CURRENT_SOURCE_DIR which points at the AzerothCore repo root and
 # would inject the core's commit instead of the module's.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Git revision (informational only)
+#
+# The revision shown by /bot comes from src/PlayerbotVersion.h, which is kept
+# in the source tree so ZIP deployments (no .git) still carry the version.
+# Update it after every git commit:
+#   REV=$(git -C modules/mod-playerbot rev-parse --short HEAD)
+#   sed -i "s/#define PLAYERBOT_REV \".*\"/#define PLAYERBOT_REV \"$REV\"/" \
+#       modules/mod-playerbot/src/PlayerbotVersion.h
+#   git add modules/mod-playerbot/src/PlayerbotVersion.h
+#
+# NOTE: we intentionally do NOT write the header from configure_file/file(WRITE)
+# because CMake refuses to write into a source directory, and we do NOT inject
+# a compile definition either (it would clash with the header's definition).
+# ---------------------------------------------------------------------------
 execute_process(
     COMMAND git -C "${CMAKE_CURRENT_LIST_DIR}" rev-parse --short HEAD
     OUTPUT_VARIABLE PLAYERBOT_REV
@@ -41,5 +56,4 @@ execute_process(
 if(NOT PLAYERBOT_REV)
     set(PLAYERBOT_REV "unknown")
 endif()
-message(STATUS "mod-playerbot: revision = ${PLAYERBOT_REV}")
-target_compile_definitions(modules PRIVATE PLAYERBOT_REV="${PLAYERBOT_REV}")
+message(STATUS "mod-playerbot: source rev = ${PLAYERBOT_REV} (see src/PlayerbotVersion.h; update after each commit)")

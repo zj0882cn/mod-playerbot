@@ -26,9 +26,11 @@ static std::string BotGuidString(ObjectGuid guid)
 }
 
 #define PLAYERBOT_VERSION "v2.2.0"
-// Git commit this source corresponds to. Injected by mod-playerbot.cmake at
-// (re)configure time (git rev-parse --short HEAD) so /bot shows the exact
-// commit the running binary was built from. Fallback if not injected.
+// Git commit this source corresponds to. Stored in PlayerbotVersion.h, which
+// mod-playerbot.cmake rewrites at (re)configure time (git rev-parse --short
+// HEAD). Keeping it in a header means ZIP deployments (no .git) still carry
+// the version in the source tree and /bot shows the exact commit built from.
+#include "PlayerbotVersion.h"
 #ifndef PLAYERBOT_REV
 #define PLAYERBOT_REV "unknown"
 #endif
