@@ -229,6 +229,46 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     std::string cmd(action);
     std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
 
+    // ---- 自定义动作条验证 (P-016) ----
+    // /bot testbar [slot]  -- 把 master 已学会的第一个主动法术塞进指定动作条
+    // 槽位(默认 0)并下发 SMSG_ACTION_BUTTONS。纯机制验证: 服务端能否自定义
+    // 普通动作条任意位置。slot 0-143 对应全部 7 条命令条(每条 12 格)。
+    if (cmd == "testbar")
+    {
+        uint32 slot = 0;
+        char* slotArg = strtok(nullptr, " ");
+        if (slotArg)
+            slot = static_cast<uint32>(strtoul(slotArg, nullptr, 10));
+
+        // 取 master 已学会的第一个主动法术(保证 addActionButton 校验通过)
+        uint32 spellId = 0;
+        for (auto const& itr : currentPlayer->GetSpellMap())
+        {
+            uint32 id = itr.first;
+            if (!currentPlayer->HasActiveSpell(id))
+                continue;
+            SpellInfo const* si = sSpellMgr->GetSpellInfo(id);
+            if (!si || si->IsPassive())
+                continue;
+            spellId = id;
+            break;
+        }
+        if (!spellId)
+        {
+            BotSendSysMessage(handler, "BOTERROR;testbar;no active spell");
+            return true;
+        }
+
+        ActionButton* ab = currentPlayer->addActionButton(slot, spellId, ACTION_BUTTON_SPELL);
+        if (ab)
+            currentPlayer->SendActionButtons(1);
+        BotSendSysMessage(handler, "BOTACTION;testbar;slot={};spell={};{}",
+            slot, spellId, ab ? "ok" : "fail");
+        PB_LOG(1, "Command 'testbar' by '{}': slot {} spell {} {}",
+            currentPlayer->GetName(), slot, spellId, ab ? "ok" : "fail");
+        return true;
+    }
+
     // ---- Pet-style commands (only for the bot's master) ----
     // Optional single-bot target: /bot <cmd> [$botName]  (no name = all your bots)
     if (cmd == "follow" || cmd == "stay" || cmd == "attack" || cmd == "return")
