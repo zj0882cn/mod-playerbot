@@ -15,14 +15,17 @@
 // 可临时学会）。图标/名字来自 DBC 原法术（先占位，后续可按需调整 ID 或 DBC）。
 // 命令法术被 OnSpellCheckCast 拦截（res=失败），不会真正施放。
 // =====================================================================
+// 动作条槽位约定(3.3.5): 技能栏1=0-11(主动作条), 技能栏2=12-23, ...
+// 84-143 = 后台预留区(客户端默认隐藏)。实验: attack 单独放 84(84+是否显示),
+// 其余暂留技能栏2(12-18)。
 const std::vector<BotBarCommand> g_botBarCommands = {
-    { "attack",            133, 0 },   // Fireball
-    { "follow",            585, 1 },   // Smite
-    { "stay",              686, 2 },   // Shadow Bolt
-    { "stance-passive",    589, 3 },   // Shadow Word: Pain
-    { "stance-defensive",  809, 4 },   // Moonfire
-    { "stance-aggressive", 348, 5 },   // Immolate
-    { "return",            120, 6 },   // Conjure Water
+    { "attack",            133, 84 },  // Fireball   ← 实验: 后台预留区
+    { "follow",            585, 13 },  // Smite
+    { "stay",              686, 14 },  // Shadow Bolt
+    { "stance-passive",    589, 15 },  // Shadow Word: Pain
+    { "stance-defensive",  809, 16 },  // Moonfire
+    { "stance-aggressive", 348, 17 },  // Immolate
+    { "return",            120, 18 },  // Conjure Water
 };
 
 bool IsBotBarSpell(uint32 spellId)
