@@ -17,16 +17,18 @@
 // =====================================================================
 // 动作条槽位约定(3.3.5): 技能栏1=0-11(常驻,玩家常用不占), 技能栏2=12-23
 // (=技能栏1替换页,平时隐藏), 技能栏3=24-35(左下技能条,常显)。
-// 【最终位置】命令按钮放技能栏3(24-30)左下技能条, 常显不占技能栏1。
-// 84+ 后台预留区客户端不显示(已验证)→放弃。法术ID已在 Spell.dbc 验证有效。
+// 【最终位置】命令按钮放技能栏3(24-30)左下技能条。
+// 命令法术用生活技能类(钓鱼/急救/剥皮/挖矿/采药/造食): 全部瞬发(casttime=0),
+// 温和无害不影响游戏, 且已在 data/dbc 验证存在(与测试服一致)。
+// 注意: 换法术ID须同步 ExecuteBotBarCommand 的 switch case。
 const std::vector<BotBarCommand> g_botBarCommands = {
-    { "attack",            133, { 24 } },  // Fireball
-    { "follow",            585, { 25 } },  // Smite
-    { "stay",              686, { 26 } },  // Shadow Bolt
-    { "stance-passive",    589, { 27 } },  // Shadow Word: Pain
-    { "stance-defensive",  172, { 28 } },  // Corruption
-    { "stance-aggressive", 348, { 29 } },  // Immolate
-    { "return",            120, { 30 } },  // Conjure Water
+    { "attack",            7620, { 24 } },  // 钓鱼
+    { "follow",            3273, { 25 } },  // 急救
+    { "stay",              8613, { 26 } },  // 剥皮
+    { "stance-passive",    2575, { 27 } },  // 挖矿
+    { "stance-defensive",  2366, { 28 } },  // 采药
+    { "stance-aggressive", 1485, { 29 } },  // 造食
+    { "return",            120,  { 30 } },  // (瞬发,保留)
 };
 
 bool IsBotBarSpell(uint32 spellId)
@@ -54,7 +56,7 @@ void ExecuteBotBarCommand(Player* master, uint32 spellId, Unit* explTarget)
 
         switch (spellId)
         {
-            case 133: // attack：攻击选中目标（无则用 master 当前目标）
+            case 7620: // attack：攻击选中目标（无则用 master 当前目标）
             {
                 Unit* target = explTarget;
                 if (!target || !target->IsAlive() || !bot->IsValidAttackTarget(target))
@@ -78,7 +80,7 @@ void ExecuteBotBarCommand(Player* master, uint32 spellId, Unit* explTarget)
                 }
                 break;
             }
-            case 585: // follow
+            case 3273: // follow
                 sPlayerBotMgr->SetBotCommand(botGuid, PlayerBotMgr::BOT_COMMAND_FOLLOW);
                 sPlayerBotMgr->SetBotAttackTarget(botGuid, ObjectGuid::Empty);
                 sPlayerBotMgr->ClearBotStayPosition(botGuid);
@@ -86,7 +88,7 @@ void ExecuteBotBarCommand(Player* master, uint32 spellId, Unit* explTarget)
                 BotPlayerScript::ExecuteBotFollow(bot, master);
                 ++count;
                 break;
-            case 686: // stay
+            case 8613: // stay
                 sPlayerBotMgr->SetBotCommand(botGuid, PlayerBotMgr::BOT_COMMAND_STAY);
                 sPlayerBotMgr->SetBotAttackTarget(botGuid, ObjectGuid::Empty);
                 sPlayerBotMgr->SetBotStayPosition(botGuid,
@@ -99,15 +101,15 @@ void ExecuteBotBarCommand(Player* master, uint32 spellId, Unit* explTarget)
                 bot->GetMotionMaster()->MoveIdle();
                 ++count;
                 break;
-            case 589: // stance passive
+            case 2575: // stance passive
                 sPlayerBotMgr->SetBotStance(botGuid, PlayerBotMgr::STANCE_PASSIVE);
                 ++count;
                 break;
-            case 809: // stance defensive
+            case 2366: // stance defensive
                 sPlayerBotMgr->SetBotStance(botGuid, PlayerBotMgr::STANCE_DEFENSIVE);
                 ++count;
                 break;
-            case 348: // stance aggressive
+            case 1485: // stance aggressive
                 sPlayerBotMgr->SetBotStance(botGuid, PlayerBotMgr::STANCE_AGGRESSIVE);
                 ++count;
                 break;
