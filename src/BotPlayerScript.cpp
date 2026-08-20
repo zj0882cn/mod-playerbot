@@ -743,6 +743,9 @@ bool BotPlayerScript::CanCastSpell(Player* bot, Unit* target, uint32 spellId)
     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
     if (!spellInfo)
         return false;
+    // 真实客户端机制：施法前读公共冷却(GCD)，GCD 中不发施法命令。
+    if (bot->GetGlobalCooldownMgr().HasGlobalCooldown(spellInfo))
+        return false;
     // P-006: 法力不足时不施放（仅法力职业；无消耗/非法力法术不受影响）
     if (spellInfo->PowerType == POWER_MANA)
     {
@@ -1017,6 +1020,11 @@ namespace
     }
 }
 
+// 自动施放的人手延迟：模拟真实玩家操作（人手无法每秒施法 20 次），
+// 两次自动施法操作至少间隔这么多毫秒，避免每 tick 无脑施放导致
+// 真实客户端看到 bot（尤其进攻姿态）不停报错。
+static const uint32 BOT_CAST_DELAY_MS = 300;
+
 bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
 {
     if (!bot || !target)
@@ -1025,6 +1033,12 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
     // P-010: 施法防打断——正在读条/引导时本 tick 不施放新技能，
     // 避免每 tick 的自动施法打断自己当前读条。
     if (bot->IsNonMeleeSpellCast(false))
+        return false;
+
+    // 模拟真人操作：人手反应延迟节流。真实玩家无法每秒施法 20 次，
+    // 两次自动施法操作至少间隔 BOT_CAST_DELAY_MS（即使 GCD 已结束也不立即连发）。
+    uint32 nowMs = getMSTime();
+    if (nowMs < _botLastAutoCast[bot->GetGUID()] + BOT_CAST_DELAY_MS)
         return false;
 
     // 1) Collect the auto-cast skill list straight from the bot's OWN first
@@ -1066,6 +1080,7 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
             {
                 PB_LOG(2, "Bot '{}' started Auto Shot (75) at range", bot->GetName());
                 bot->CastSpell(target, 75, false);
+                _botLastAutoCast[bot->GetGUID()] = getMSTime();
                 startedRanged = true;
             }
             break;
@@ -1107,6 +1122,7 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
                 continue;
             PB_LOG(2, "Bot '{}' auto-cast friendly spell {} on '{}'", bot->GetName(), sid, friendly->GetName());
             bot->CastSpell(friendly, sid, false);
+            _botLastAutoCast[bot->GetGUID()] = getMSTime();
         }
         else
         {
@@ -1114,6 +1130,7 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
                 continue;
             PB_LOG(2, "Bot '{}' auto-cast spell {} on '{}'", bot->GetName(), sid, target->GetName());
             bot->CastSpell(target, sid, false);
+            _botLastAutoCast[bot->GetGUID()] = getMSTime();
         }
         sPlayerBotMgr->SetBotSkillCursor(bot->GetGUID(), (cursor + i + 1) % spells.size());
         return true;

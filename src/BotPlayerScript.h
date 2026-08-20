@@ -142,6 +142,8 @@ private:
     ObjectGuid _followMaster; // last master we are following; forces re-follow on change
     // Role analysis cache (AnalyzeBot results), refreshed ~1s.
     std::map<ObjectGuid, BotRoleAnalysis> _botRoleCache;
+    // 自动施放入手延迟节流：模拟真人操作，两次施法操作至少间隔 BOT_CAST_DELAY_MS
+    std::map<ObjectGuid, uint32> _botLastAutoCast;
 };
 
 #endif
