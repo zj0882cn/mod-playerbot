@@ -12,7 +12,7 @@
 #define PLAYERBOT_VERSION_H
 
 #ifndef PLAYERBOT_REV
-#define PLAYERBOT_REV "a9b4cf0"
+#define PLAYERBOT_REV "f26e6cd"
 #endif
 
 #endif // PLAYERBOT_VERSION_H
