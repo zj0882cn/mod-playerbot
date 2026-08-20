@@ -14,6 +14,12 @@
 #include "ItemTemplate.h"
 #include "Map.h"
 #include "DBCStores.h"
+#include "Group.h"
+#include "GroupMgr.h"
+
+// Debug 命令开关：console 用 .bot debug on|off 控制，默认开。
+// 上线/生产时在 worldserver 控制台执行 .bot debug off 关闭即可（不写配置文件）。
+static bool g_debugCommandsEnabled = true;
 
 // Console usage：完全对齐 AZ 核心命令输出（acore_string 195/8/191/192）
 //   ### USAGE: .bot ...
@@ -239,6 +245,189 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 areaId, sAreaTableStore.LookupEntry(areaId) ? sAreaTableStore.LookupEntry(areaId)->area_name[sWorld->GetDefaultDbcLocale()] : "Unknown");
             handler->PSendSysMessage("X: {:.1f} Y: {:.1f} Z: {:.1f} Orientation: {:.1f}",
                 bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation());
+            return true;
+        }
+
+        if (cmd == "debug")
+        {
+            // .bot debug [on|off] —— 控制 Debug 命令组开关（默认开）
+            char* arg = strtok(nullptr, " ");
+            if (arg)
+            {
+                std::string a(arg);
+                std::transform(a.begin(), a.end(), a.begin(), ::tolower);
+                if (a == "on")
+                    g_debugCommandsEnabled = true;
+                else if (a == "off")
+                    g_debugCommandsEnabled = false;
+                else
+                {
+                    handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                    return false;
+                }
+            }
+            handler->PSendSysMessage("PlayerBot Debug commands: {}",
+                g_debugCommandsEnabled ? "enabled" : "disabled");
+            return true;
+        }
+
+        // ---- Debug 命令组（测试用，受 .bot debug 开关控制）----
+        if (cmd.rfind("debug", 0) == 0)
+        {
+            if (!g_debugCommandsEnabled)
+            {
+                handler->PSendSysMessage("Debug commands disabled (.bot debug off).");
+                return true;
+            }
+
+            if (cmd == "debuggroupinvite")
+            {
+                // .bot debuggroupinvite <master> <bot> —— master 邀请 bot 组队，
+                // 走 Group::AddInvite -> OnGroupInviteMember -> bot 自动接受（OnInviteMember hook）。
+                char* masterName = strtok(nullptr, " ");
+                char* botName = strtok(nullptr, " ");
+                if (!masterName || !botName)
+                {
+                    handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                    return false;
+                }
+                ObjectGuid mguid = sPlayerBotMgr->FindPlayerByName(masterName);
+                Player* master = mguid.IsEmpty() ? nullptr : ObjectAccessor::FindConnectedPlayer(mguid);
+                ObjectGuid bguid = sPlayerBotMgr->FindPlayerByName(botName);
+                Player* bot = bguid.IsEmpty() ? nullptr : ObjectAccessor::FindConnectedPlayer(bguid);
+                if (!master || !master->IsInWorld())
+                {
+                    handler->PSendSysMessage("Master \"{}\" not found or offline.", masterName);
+                    return true;
+                }
+                if (!bot || !bot->IsInWorld())
+                {
+                    handler->PSendSysMessage("Player \"{}\" not found or offline.", botName);
+                    return true;
+                }
+                // 清理可能的残留邀请（上次邀请/踢出未完成导致 SetGroupInvite 残留）
+                if (bot->GetGroupInvite())
+                    bot->SetGroupInvite(nullptr);
+                if (bot->GetGroup())
+                {
+                    handler->PSendSysMessage("'{}' already in a group.", botName);
+                    return true;
+                }
+                Group* group = master->GetGroup();
+                if (!group || !group->IsCreated())
+                {
+                    // master 没有队伍：新建（标准流程）
+                    group = new Group();
+                    if (!group->Create(master))
+                    {
+                        handler->PSendSysMessage("Debug: group create failed.");
+                        return true;
+                    }
+                    group->AddMember(master);
+                    sGroupMgr->AddGroup(group);
+                }
+                if (group->AddInvite(bot))
+                {
+                    handler->PSendSysMessage("Debug: '{}' invited '{}'.", masterName, botName);
+                }
+                else
+                    handler->PSendSysMessage("Debug: invite failed.");
+                return true;
+            }
+
+            if (cmd == "debugteleport")
+            {
+                // .bot debugteleport <name> <x> <y> <z> [map] —— 传送指定玩家，
+                // 用于复现时移动 master，观察 bot 是否跟随。
+                char* pname = strtok(nullptr, " ");
+                char* xstr = strtok(nullptr, " ");
+                char* ystr = strtok(nullptr, " ");
+                char* zstr = strtok(nullptr, " ");
+                char* mapstr = strtok(nullptr, " ");
+                if (!pname || !xstr || !ystr || !zstr)
+                {
+                    handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                    return false;
+                }
+                ObjectGuid tguid = sPlayerBotMgr->FindPlayerByName(pname);
+                Player* tp = tguid.IsEmpty() ? nullptr : ObjectAccessor::FindConnectedPlayer(tguid);
+                if (!tp || !tp->IsInWorld())
+                {
+                    handler->PSendSysMessage("Player \"{}\" not found or offline.", pname);
+                    return true;
+                }
+                float x = float(atof(xstr)), y = float(atof(ystr)), z = float(atof(zstr));
+                uint32 map = mapstr ? uint32(atoi(mapstr)) : tp->GetMapId();
+                tp->TeleportTo(map, x, y, z, tp->GetOrientation());
+                handler->PSendSysMessage("Debug: '{}' teleported to {} {} {} (map {}).", pname, x, y, z, map);
+                return true;
+            }
+
+            if (cmd == "debuggroupkick")
+            {
+                // 等价于 master 踢出 bot：直接 Group::RemoveMember，触发 OnRemoveMember hook。
+                char* playerName = strtok(nullptr, " ");
+                if (!playerName)
+                {
+                    handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                    return false;
+                }
+                ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
+                if (guid.IsEmpty())
+                {
+                    handler->PSendSysMessage("Player \"{}\" not found.", playerName);
+                    return false;
+                }
+                Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
+                if (!bot || !bot->IsInWorld())
+                {
+                    handler->PSendSysMessage("Player \"{}\" is offline.", playerName);
+                    return true;
+                }
+                Group* group = bot->GetGroup();
+                if (!group)
+                {
+                    handler->PSendSysMessage("Player \"{}\" is not in a group.", playerName);
+                    return true;
+                }
+                group->RemoveMember(guid);
+                handler->PSendSysMessage("Debug: '{}' removed from group.", playerName);
+                return true;
+            }
+
+            if (cmd == "debuggrouplist")
+            {
+                char* playerName = strtok(nullptr, " ");
+                if (!playerName)
+                {
+                    handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                    return false;
+                }
+                ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
+                if (guid.IsEmpty())
+                {
+                    handler->PSendSysMessage("Player \"{}\" not found.", playerName);
+                    return false;
+                }
+                Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
+                if (!bot || !bot->IsInWorld())
+                {
+                    handler->PSendSysMessage("Player \"{}\" is offline.", playerName);
+                    return true;
+                }
+                Group* group = bot->GetGroup();
+                if (!group)
+                {
+                    handler->PSendSysMessage("Player \"{}\" is not in a group.", playerName);
+                    return true;
+                }
+                handler->PSendSysMessage("'{}' group: leader={}, members={}", playerName,
+                    sPlayerBotMgr->GetCharacterName(group->GetLeaderGUID()),
+                    group->GetMembersCount());
+                return true;
+            }
+
+            handler->PSendSysMessage("Unknown debug subcommand '{}'.", cmd);
             return true;
         }
 
