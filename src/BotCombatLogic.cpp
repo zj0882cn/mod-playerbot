@@ -449,19 +449,19 @@ void BotPlayerScript::DoTankCombat(Player* bot, Unit* target, BotRoleAnalysis co
             uint32 rage = bot->GetPower(POWER_RAGE);
 
             if (target->GetVictim() != bot && CanCastSpell(bot, target, 355))
-                bot->CastSpell(target, 355, false);
+                CastBotSpell(bot, target, 355);
 
             if (rage >= 15 && !target->HasAura(7384) && CanCastSpell(bot, target, 7384))
-                bot->CastSpell(target, 7384, false);
+                CastBotSpell(bot, target, 7384);
 
             if (CanCastSpell(bot, bot, 2565))
-                bot->CastSpell(bot, 2565, false);
+                CastBotSpell(bot, bot, 2565);
 
             if (rage >= 15 && CanCastSpell(bot, target, 78))
-                bot->CastSpell(target, 78, false);
+                CastBotSpell(bot, target, 78);
 
             if (bot->GetHealthPct() < 20 && CanCastSpell(bot, bot, 12975))
-                bot->CastSpell(bot, 12975, false);
+                CastBotSpell(bot, bot, 12975);
 
             bot->Attack(target, true);
             break;
@@ -475,19 +475,19 @@ void BotPlayerScript::DoTankCombat(Player* bot, Unit* target, BotRoleAnalysis co
             }
 
             if (!bot->HasAura(25780) && CanCastSpell(bot, bot, 25780))
-                bot->CastSpell(bot, 25780, false);
+                CastBotSpell(bot, bot, 25780);
 
             if (target->GetVictim() != bot && CanCastSpell(bot, target, 6940))
-                bot->CastSpell(target, 6940, false);
+                CastBotSpell(bot, target, 6940);
 
             if (CanCastSpell(bot, target, 20271))
-                bot->CastSpell(target, 20271, false);
+                CastBotSpell(bot, target, 20271);
 
             if (CanCastSpell(bot, bot, 19752))
-                bot->CastSpell(bot, 19752, false);
+                CastBotSpell(bot, bot, 19752);
 
             if (bot->GetHealthPct() < 20 && CanCastSpell(bot, bot, 31850))
-                bot->CastSpell(bot, 31850, false);
+                CastBotSpell(bot, bot, 31850);
 
             bot->Attack(target, true);
             break;
@@ -495,13 +495,13 @@ void BotPlayerScript::DoTankCombat(Player* bot, Unit* target, BotRoleAnalysis co
         case CLASS_DRUID:
         {
             if (bot->GetShapeshiftForm() != FORM_BEAR && CanCastSpell(bot, bot, 5487))
-                bot->CastSpell(bot, 5487, false);
+                CastBotSpell(bot, bot, 5487);
 
             if (target->GetVictim() != bot && CanCastSpell(bot, target, 5209))
-                bot->CastSpell(target, 5209, false);
+                CastBotSpell(bot, target, 5209);
 
             if (CanCastSpell(bot, target, 48574))
-                bot->CastSpell(target, 48574, false);
+                CastBotSpell(bot, target, 48574);
 
             bot->Attack(target, true);
             break;
@@ -539,19 +539,19 @@ void BotPlayerScript::DoHealerCombat(Player* bot, Unit* target, BotRoleAnalysis 
             {
                 case CLASS_PRIEST:
                     if (CanCastSpell(bot, lowest, 2060))
-                        bot->CastSpell(lowest, 2060, false);
+                        CastBotSpell(bot, lowest, 2060);
                     break;
                 case CLASS_PALADIN:
                     if (CanCastSpell(bot, lowest, 635))
-                        bot->CastSpell(lowest, 635, false);
+                        CastBotSpell(bot, lowest, 635);
                     break;
                 case CLASS_SHAMAN:
                     if (CanCastSpell(bot, lowest, 49276))
-                        bot->CastSpell(lowest, 49276, false);
+                        CastBotSpell(bot, lowest, 49276);
                     break;
                 case CLASS_DRUID:
                     if (CanCastSpell(bot, lowest, 5186))
-                        bot->CastSpell(lowest, 5186, false);
+                        CastBotSpell(bot, lowest, 5186);
                     break;
             }
             return;
@@ -571,11 +571,11 @@ void BotPlayerScript::DoMeleeDPSCombat(Player* bot, Unit* target, BotRoleAnalysi
         {
             uint32 rage = bot->GetPower(POWER_RAGE);
             if (rage >= 30 && CanCastSpell(bot, target, 23881))
-                bot->CastSpell(target, 23881, false);
+                CastBotSpell(bot, target, 23881);
             else if (rage >= 25 && CanCastSpell(bot, target, 1680))
-                bot->CastSpell(target, 1680, false);
+                CastBotSpell(bot, target, 1680);
             else if (rage >= 15 && CanCastSpell(bot, target, 78))
-                bot->CastSpell(target, 78, false);
+                CastBotSpell(bot, target, 78);
             bot->Attack(target, true);
             break;
         }
@@ -583,33 +583,33 @@ void BotPlayerScript::DoMeleeDPSCombat(Player* bot, Unit* target, BotRoleAnalysi
         {
             uint32 energy = bot->GetPower(POWER_ENERGY);
             if (!bot->HasAura(5171) && energy >= 25 && CanCastSpell(bot, bot, 5171))
-                bot->CastSpell(bot, 5171, false);
+                CastBotSpell(bot, bot, 5171);
             else if (!target->HasInArc(M_PI, bot) && energy >= 60 && CanCastSpell(bot, target, 53))
-                bot->CastSpell(target, 53, false);
+                CastBotSpell(bot, target, 53);
             else if (energy >= 45 && CanCastSpell(bot, target, 1752))
-                bot->CastSpell(target, 1752, false);
+                CastBotSpell(bot, target, 1752);
             bot->Attack(target, true);
             break;
         }
         case CLASS_PALADIN:
         {
             if (!target->HasAura(20271) && CanCastSpell(bot, target, 20271))
-                bot->CastSpell(target, 20271, false);
+                CastBotSpell(bot, target, 20271);
             else if (CanCastSpell(bot, target, 35395))
-                bot->CastSpell(target, 35395, false);
+                CastBotSpell(bot, target, 35395);
             if (bot->GetHealthPct() < 30 && CanCastSpell(bot, bot, 635))
-                bot->CastSpell(bot, 635, false);
+                CastBotSpell(bot, bot, 635);
             bot->Attack(target, true);
             break;
         }
         case CLASS_SHAMAN:
         {
             if (bot->GetDistance(target) > 10.0f && CanCastSpell(bot, target, 49238))
-                bot->CastSpell(target, 49238, false);
+                CastBotSpell(bot, target, 49238);
             else if (CanCastSpell(bot, bot, 8512))
-                bot->CastSpell(bot, 8512, false);
+                CastBotSpell(bot, bot, 8512);
             if (bot->GetHealthPct() < 30 && CanCastSpell(bot, bot, 49276))
-                bot->CastSpell(bot, 49276, false);
+                CastBotSpell(bot, bot, 49276);
             if (bot->GetDistance(target) < 5.0f)
                 bot->Attack(target, true);
             break;
@@ -623,11 +623,11 @@ void BotPlayerScript::DoMeleeDPSCombat(Player* bot, Unit* target, BotRoleAnalysi
             else
             {
                 if (!target->HasAura(770) && CanCastSpell(bot, target, 770))
-                    bot->CastSpell(target, 770, false);
+                    CastBotSpell(bot, target, 770);
                 else if (CanCastSpell(bot, target, 8921))
-                    bot->CastSpell(target, 8921, false);
+                    CastBotSpell(bot, target, 8921);
                 if (bot->GetHealthPct() < 30 && CanCastSpell(bot, bot, 5186))
-                    bot->CastSpell(bot, 5186, false);
+                    CastBotSpell(bot, bot, 5186);
             }
             break;
         }
@@ -646,17 +646,17 @@ void BotPlayerScript::DoRangedDPSCombat(Player* bot, Unit* target, BotRoleAnalys
         case CLASS_MAGE:
         {
             if (bot->GetDistance(target) < 10.0f && CanCastSpell(bot, target, 122))
-                bot->CastSpell(target, 122, false);
+                CastBotSpell(bot, target, 122);
             if (CanCastSpell(bot, target, 133))
-                bot->CastSpell(target, 133, false);
+                CastBotSpell(bot, target, 133);
             break;
         }
         case CLASS_HUNTER:
         {
             if (!target->HasAura(1978) && CanCastSpell(bot, target, 1978))
-                bot->CastSpell(target, 1978, false);          // Serpent Sting
+                CastBotSpell(bot, target, 1978);          // Serpent Sting
             else if (CanCastSpell(bot, target, 56641))
-                bot->CastSpell(target, 56641, false);         // Steady Shot
+                CastBotSpell(bot, target, 56641);         // Steady Shot
 
             // A hunter is a HYBRID: ranged Auto Shot is the core, but a target
             // that closes to melee range is also hit with the melee weapon.
@@ -672,29 +672,29 @@ void BotPlayerScript::DoRangedDPSCombat(Player* bot, Unit* target, BotRoleAnalys
 
             if (bot->GetWeaponForAttack(RANGED_ATTACK, true) &&
                 !bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL))
-                bot->CastSpell(target, 75, false);            // Auto Shot
+                CastBotSpell(bot, target, 75);            // Auto Shot
             break;
         }
         case CLASS_WARLOCK:
         {
             if (!target->HasAura(47809) && CanCastSpell(bot, target, 47809))
-                bot->CastSpell(target, 47809, false);
+                CastBotSpell(bot, target, 47809);
             else if (CanCastSpell(bot, target, 47811))
-                bot->CastSpell(target, 47811, false);
+                CastBotSpell(bot, target, 47811);
             if (bot->GetDistance(target) < 8.0f && CanCastSpell(bot, target, 5782))
-                bot->CastSpell(target, 5782, false);
+                CastBotSpell(bot, target, 5782);
             break;
         }
         case CLASS_PRIEST:
         {
             if (!target->HasAura(589) && CanCastSpell(bot, target, 589))
-                bot->CastSpell(target, 589, false);
+                CastBotSpell(bot, target, 589);
             else if (CanCastSpell(bot, target, 8092))
-                bot->CastSpell(target, 8092, false);
+                CastBotSpell(bot, target, 8092);
             else if (CanCastSpell(bot, target, 15407))
-                bot->CastSpell(target, 15407, false);
+                CastBotSpell(bot, target, 15407);
             if (bot->GetHealthPct() < 30 && CanCastSpell(bot, bot, 17))
-                bot->CastSpell(bot, 17, false);
+                CastBotSpell(bot, bot, 17);
             if (bot->GetWeaponForAttack(RANGED_ATTACK, true))
                 bot->Attack(target, true);
             break;
@@ -702,17 +702,17 @@ void BotPlayerScript::DoRangedDPSCombat(Player* bot, Unit* target, BotRoleAnalys
         case CLASS_SHAMAN:
         {
             if (CanCastSpell(bot, target, 49238))
-                bot->CastSpell(target, 49238, false);
+                CastBotSpell(bot, target, 49238);
             break;
         }
         case CLASS_DRUID:
         {
             if (!target->HasAura(770) && CanCastSpell(bot, target, 770))
-                bot->CastSpell(target, 770, false);
+                CastBotSpell(bot, target, 770);
             else if (CanCastSpell(bot, target, 8921))
-                bot->CastSpell(target, 8921, false);
+                CastBotSpell(bot, target, 8921);
             if (bot->GetHealthPct() < 30 && CanCastSpell(bot, bot, 5186))
-                bot->CastSpell(bot, 5186, false);
+                CastBotSpell(bot, bot, 5186);
             break;
         }
         default:

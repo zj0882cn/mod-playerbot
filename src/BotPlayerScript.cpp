@@ -746,6 +746,11 @@ bool BotPlayerScript::CanCastSpell(Player* bot, Unit* target, uint32 spellId)
     // 真实客户端机制：施法前读公共冷却(GCD)，GCD 中不发施法命令。
     if (bot->GetGlobalCooldownMgr().HasGlobalCooldown(spellInfo))
         return false;
+    // 进战斗后移动状态：bot 正在移动时，只施放"允许移动中施放"的法术。
+    // 允许移动施放 = 瞬发(casttime=0) 且非引导；读条/引导法术移动会打断，需站定。
+    bool allowWhileMoving = (spellInfo->CalcCastTime(bot) == 0 && !spellInfo->IsChanneled());
+    if (bot->isMoving() && !allowWhileMoving)
+        return false;
     // P-006: 法力不足时不施放（仅法力职业；无消耗/非法力法术不受影响）
     if (spellInfo->PowerType == POWER_MANA)
     {
@@ -753,10 +758,55 @@ bool BotPlayerScript::CanCastSpell(Player* bot, Unit* target, uint32 spellId)
         if (cost > 0 && static_cast<int32>(bot->GetPower(POWER_MANA)) < cost)
             return false;
     }
-    float range = spellInfo->GetMaxRange();
-    if (bot->GetDistance(target) > range)
+    // P-012: 距离判断对齐服务器 Spell::CheckCast（在"决定施放"的执行点判断）：
+    //  - 近战射程法术（RangeEntry->Flags==SPELL_RANGE_MELEE）用 IsWithinMeleeRange
+    //  - 远程/施法用 IsWithinCombatRange（两者都减碰撞半径，替代原中心距
+    //    GetDistance>range，避免边界抖动"站太近/太远"误判而卡住）
+    //  - 检查最小距离（太近服务器返回 SPELL_FAILED_TOO_CLOSE）
+    float maxRange = spellInfo->GetMaxRange();
+    if (maxRange > 0.0f)
+    {
+        bool isMeleeSpell = spellInfo->RangeEntry && (spellInfo->RangeEntry->Flags & SPELL_RANGE_MELEE);
+        if (isMeleeSpell)
+        {
+            if (!bot->IsWithinMeleeRange(target))
+                return false;
+        }
+        else if (!bot->IsWithinCombatRange(target, maxRange))
+            return false;
+    }
+    float minRange = spellInfo->GetMinRange();
+    if (minRange > 0.0f && bot->IsWithinCombatRange(target, minRange))
         return false;
+    // P-012: 朝向判断——需要面向目标的法术（FacingCasterFlags 带 INFRONT），
+    // 目标不在 bot 正前方 180° 内时不施放。服务器 Spell::CheckCast 对朝向
+    // 不符返回 SPELL_FAILED_UNIT_NOT_INFRONT，盲目施放只会每 tick 被拒绝
+    // （法师/猎人"卡住"的常见原因：朝向没转好就放技能）。
+    if (spellInfo->FacingCasterFlags & SPELL_FACING_FLAG_INFRONT)
+        if (!bot->HasInArc(static_cast<float>(M_PI), target))
+            return false;
     return true;
+}
+
+// P-012: 施法结果处理（攻击没打着的报错机制）——统一包装 bot 施法并读取
+// SpellCastResult。原来所有 bot->CastSpell(...) 都忽略返回值：施法失败
+// （朝向不对 UNIT_NOT_INFRONT / 距离不够 OUT_OF_RANGE / 视野被挡
+// LINE_OF_SIGHT / 读条被移动打断 MOVING）时 bot 不知道原因，只能每 tick
+// 盲目重试，看起来"卡住/抖动"。现在失败原因写入日志（DebugLevel 控制，
+// 默认安静），返回值保留给调用方按失败原因修正（追击/转身/换技能）。
+SpellCastResult BotPlayerScript::CastBotSpell(Player* bot, Unit* target, uint32 spellId)
+{
+    if (!bot || !target)
+        return SPELL_FAILED_BAD_TARGETS;
+    SpellCastResult result = bot->CastSpell(target, spellId, false);
+    if (result != SPELL_CAST_OK)
+    {
+        // 冷却/GCD 类"正常"失败不刷日志（CanCastSpell 已预判，走到这里
+        // 失败说明目标/状态在施法瞬间变化，是诊断"卡住"的关键线索）。
+        if (result != SPELL_FAILED_NOT_READY && result != SPELL_FAILED_TRY_AGAIN)
+            PB_LOG(1, "Bot '{}' cast spell {} on '{}' FAILED: {}", bot->GetName(), spellId, target->GetName(), uint32(result));
+    }
+    return result;
 }
 
 // ---- Friendly-target (buff/heal) detection helpers ----------------
@@ -862,9 +912,26 @@ bool BotPlayerScript::CanCastFriendlySpell(Player* bot, Unit* target, uint32 spe
         if (cost > 0 && static_cast<int32>(bot->GetPower(POWER_MANA)) < cost)
             return false;
     }
-    float range = spellInfo->GetMaxRange();
-    if (range > 0.0f && bot->GetDistance(target) > range)
+    // P-012: 距离判断对齐服务器（同 CanCastSpell）；增益/治疗多为施法类。
+    float maxRange = spellInfo->GetMaxRange();
+    if (maxRange > 0.0f)
+    {
+        bool isMeleeSpell = spellInfo->RangeEntry && (spellInfo->RangeEntry->Flags & SPELL_RANGE_MELEE);
+        if (isMeleeSpell)
+        {
+            if (!bot->IsWithinMeleeRange(target))
+                return false;
+        }
+        else if (!bot->IsWithinCombatRange(target, maxRange))
+            return false;
+    }
+    float minRange = spellInfo->GetMinRange();
+    if (minRange > 0.0f && bot->IsWithinCombatRange(target, minRange))
         return false;
+    // 朝向：需要面向目标的法术（如指向性增益），目标不在正前方不施放
+    if (spellInfo->FacingCasterFlags & SPELL_FACING_FLAG_INFRONT)
+        if (!bot->HasInArc(static_cast<float>(M_PI), target))
+            return false;
     return true;
 }
 
@@ -1079,7 +1146,7 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
                 CanCastSpell(bot, target, 75))
             {
                 PB_LOG(2, "Bot '{}' started Auto Shot (75) at range", bot->GetName());
-                bot->CastSpell(target, 75, false);
+                CastBotSpell(bot, target, 75);
                 _botLastAutoCast[bot->GetGUID()] = getMSTime();
                 startedRanged = true;
             }
@@ -1121,7 +1188,7 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
             if (!CanCastFriendlySpell(bot, friendly, sid))
                 continue;
             PB_LOG(2, "Bot '{}' auto-cast friendly spell {} on '{}'", bot->GetName(), sid, friendly->GetName());
-            bot->CastSpell(friendly, sid, false);
+            CastBotSpell(bot, friendly, sid);
             _botLastAutoCast[bot->GetGUID()] = getMSTime();
         }
         else
@@ -1129,7 +1196,7 @@ bool BotPlayerScript::CastAutoSpells(Player* bot, Unit* target)
             if (!CanCastSpell(bot, target, sid))
                 continue;
             PB_LOG(2, "Bot '{}' auto-cast spell {} on '{}'", bot->GetName(), sid, target->GetName());
-            bot->CastSpell(target, sid, false);
+            CastBotSpell(bot, target, sid);
             _botLastAutoCast[bot->GetGUID()] = getMSTime();
         }
         sPlayerBotMgr->SetBotSkillCursor(bot->GetGUID(), (cursor + i + 1) % spells.size());

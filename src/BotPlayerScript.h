@@ -3,6 +3,7 @@
 
 #include "PlayerScript.h"
 #include "ObjectGuid.h"
+#include "SharedDefines.h" // SpellCastResult
 #include <map>
 
 class Player;
@@ -69,6 +70,12 @@ private:
     // Like CanCastSpell but for a FRIENDLY target (buff/heal): CanCastSpell
     // requires an attackable target, which a friendly cast would fail on.
     bool CanCastFriendlySpell(Player* bot, Unit* target, uint32 spellId);
+    // P-012: 统一施法包装——调用 bot->CastSpell 并读取 SpellCastResult
+    // （攻击没打着的报错机制）。原来所有 bot->CastSpell(...) 都忽略返回值：
+    // 施法失败（朝向/距离/视野/移动打断）时 bot 不知道原因，只能每 tick
+    // 盲目重试而"卡住"。本函数读取失败原因写入日志（DebugLevel 控制，
+    // 默认安静），返回错误码供调用方按原因修正（追击/转身/换技能）。
+    SpellCastResult CastBotSpell(Player* bot, Unit* target, uint32 spellId);
     // True when the spell's implicit target types are self/ally/party - i.e. a
     // buff or heal that must NOT be cast on the combat target (real-client
     // behaviour: a priest does not throw Renew at a mob).
