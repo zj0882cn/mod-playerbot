@@ -7,6 +7,7 @@
 #include "Player.h"
 #include "Chat.h"
 #include "Log.h"
+#include "MotionMaster.h"
 
 #define PLAYERBOT_VERSION "v2.2.0"
 
@@ -136,6 +137,9 @@ void BotGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod 
         // Notify master BEFORE clearing, otherwise master info is lost.
         BotNotify(bot, "|cff00ff00[Bot]|r Removed from group. Master cleared.");
         sPlayerBotMgr->ClearMaster(guid);
+        // 踢出后停止跟随旧 master 的移动生成器（修复：master 已清但 bot 仍物理跟随）
+        if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE)
+            bot->GetMotionMaster()->MoveIdle();
     }
 }
 

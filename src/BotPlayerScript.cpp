@@ -570,7 +570,9 @@ void BotPlayerScript::ResetCombatState(Player* bot)
 {
     if (bot->IsInCombat())
         bot->CombatStop(true);
-    if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
+    // 停止追击/跟随等移动（bot 离开队伍后不应再跟随旧 master）
+    MovementGeneratorType moveType = bot->GetMotionMaster()->GetCurrentMovementGeneratorType();
+    if (moveType == CHASE_MOTION_TYPE || moveType == FOLLOW_MOTION_TYPE)
         bot->GetMotionMaster()->MoveIdle();
 }
 
