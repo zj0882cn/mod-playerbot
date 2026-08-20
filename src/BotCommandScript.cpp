@@ -12,6 +12,8 @@
 #include "World.h"
 #include "Item.h"
 #include "ItemTemplate.h"
+#include "Map.h"
+#include "DBCStores.h"
 
 // Console usage：完全对齐 AZ 核心命令输出（acore_string 195/8/191/192）
 //   ### USAGE: .bot ...
@@ -27,6 +29,7 @@ static void BotPrintConsoleUsage(ChatHandler* handler)
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot autospell ...");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot clearmaster <name>");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot follow ...");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot gps <name>");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot list");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot master <name>");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot remove <name>");
@@ -204,6 +207,41 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             return true;
         }
 
+        if (cmd == "gps")
+        {
+            char* playerName = strtok(nullptr, " ");
+            if (!playerName)
+            {
+                handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                return false;
+            }
+
+            ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
+            if (guid.IsEmpty())
+            {
+                handler->PSendSysMessage("Player \"{}\" not found.", playerName);
+                return false;
+            }
+
+            Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
+            if (!bot || !bot->IsInWorld())
+            {
+                handler->PSendSysMessage("Player \"{}\" is offline.", playerName);
+                return true;
+            }
+
+            // 对齐 AZ .gps 输出 (acore_string LANG_MAP_POSITION)
+            uint32 zoneId, areaId;
+            bot->GetZoneAndAreaId(zoneId, areaId);
+            handler->PSendSysMessage("Map: {} ({}) Zone: {} ({}) Area: {} ({})",
+                bot->GetMapId(), bot->FindMap() ? bot->FindMap()->GetMapName() : "Unknown",
+                zoneId, sAreaTableStore.LookupEntry(zoneId) ? sAreaTableStore.LookupEntry(zoneId)->area_name[sWorld->GetDefaultDbcLocale()] : "Unknown",
+                areaId, sAreaTableStore.LookupEntry(areaId) ? sAreaTableStore.LookupEntry(areaId)->area_name[sWorld->GetDefaultDbcLocale()] : "Unknown");
+            handler->PSendSysMessage("X: {:.1f} Y: {:.1f} Z: {:.1f} Orientation: {:.1f}",
+                bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation());
+            return true;
+        }
+
         handler->PSendSysMessage("Unknown subcommand '{}'.", cmd);
         return false;
     }
@@ -237,6 +275,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         BotSendSysMessage(handler, "|cff00ff00/bot stance [$name] [d|p|a]|r - Set stance (d=def,p=passive,a=agg)");
         BotSendSysMessage(handler, "|cff00ff00/bot spell [$name] <1-12>|r   - Cast a skill slot");
         BotSendSysMessage(handler, "|cff00ff00/bot autospell [$name] <1-12>|r- Toggle slot autocast");
+        BotSendSysMessage(handler, "|cff00ff00/bot gps <name>|r              - Show bot position");
         BotSendSysMessage(handler, "|cff00ff00/bot skill [$name] pool|info|r - View bot skills");
         BotSendSysMessage(handler, "|cff00ff00==================================================|r");
         BotSendSysMessage(handler, "Total bots: |cffff00ff{}|r", sPlayerBotMgr->GetCount());
@@ -831,6 +870,46 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             PB_LOG(1, "Command 'master' by '{}': bot '{}' has no master",
                 currentPlayer->GetName(), playerName);
         }
+        return true;
+    }
+
+    if (cmd == "gps")
+    {
+        char* arg1 = strtok(nullptr, " ");
+        if (!arg1)
+        {
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot gps <name>.|r");
+            return true;
+        }
+
+        ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(arg1);
+        if (guid.IsEmpty())
+        {
+            BotSendSysMessage(handler, "|cffff0000Bot '{}' not found.|r", arg1);
+            return true;
+        }
+
+        if (!isGM3 && !sPlayerBotMgr->IsMasterOf(currentPlayer->GetGUID(), guid))
+        {
+            BotSendSysMessage(handler, "|cffff0000You don't own bot '{}'.|r", arg1);
+            return true;
+        }
+
+        Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
+        if (!bot || !bot->IsInWorld())
+        {
+            BotSendSysMessage(handler, "|cffff0000'{}' is offline.|r", arg1);
+            return true;
+        }
+
+        uint32 zoneId, areaId;
+        bot->GetZoneAndAreaId(zoneId, areaId);
+        BotSendSysMessage(handler, "|cff00ff00'{}' Map: {} ({}) Zone: {} ({})|r",
+            bot->GetName(), bot->GetMapId(),
+            bot->FindMap() ? bot->FindMap()->GetMapName() : "Unknown",
+            zoneId, sAreaTableStore.LookupEntry(zoneId) ? sAreaTableStore.LookupEntry(zoneId)->area_name[sWorld->GetDefaultDbcLocale()] : "Unknown");
+        BotSendSysMessage(handler, "|cff00ff00X: {:.1f} Y: {:.1f} Z: {:.1f} Orientation: {:.1f}|r",
+            bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation());
         return true;
     }
 
