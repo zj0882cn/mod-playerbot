@@ -64,6 +64,23 @@ void BotPlayerScript::OnUpdate(Player* player, uint32 p_time)
     if (!sPlayerBotMgr->IsBot(player->GetGUID()))
         return;
 
+    // P-012: 每 tick 维护客户端可见目标(UNIT_FIELD_TARGET) = master。
+    // master 在线 -> 指向 master；无 master(踢出/离线) -> 清空。
+    // 这样无论战斗/空闲/被踢，客户端看到的 bot 目标始终与 master 一致，
+    // 且不会残留旧目标（脱战/踢出后也能清掉）。
+    {
+        ObjectGuid _mg = sPlayerBotMgr->GetMaster(player->GetGUID());
+        if (Player* _m = ObjectAccessor::FindConnectedPlayer(_mg))
+        {
+            if (player->GetTarget() != _m->GetGUID())
+                player->SetSelection(_m->GetGUID());
+        }
+        else if (player->GetTarget())
+        {
+            player->SetSelection(ObjectGuid::Empty);
+        }
+    }
+
     // Pet-style AI: run the core every world tick (like PetAI::UpdateAI runs
     // every AI tick). Only the heavy AnalyzeBot role scan is throttled to ~1s
     // (mirrors PetAI::m_updateAlliesTimer); everything else - command state,

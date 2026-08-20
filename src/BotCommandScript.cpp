@@ -466,6 +466,45 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 return true;
             }
 
+            if (cmd == "debugstance")
+            {
+                // .bot debugstance <bot> <d|p|a> —— 调试/测试用：设置 bot 姿态。
+                // 黑盒测试(T4 战斗中 target==master)需 aggressive 让 bot 自动索敌。
+                char* botName = strtok(nullptr, " ");
+                char* stanceArg = strtok(nullptr, " ");
+                if (!botName || !stanceArg)
+                {
+                    handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                    return false;
+                }
+                ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(botName);
+                if (guid.IsEmpty())
+                {
+                    handler->PSendSysMessage("Player \"{}\" not found.", botName);
+                    return false;
+                }
+                Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
+                if (!bot || !bot->IsInWorld())
+                {
+                    handler->PSendSysMessage("Player \"{}\" is offline.", botName);
+                    return true;
+                }
+                std::string s(stanceArg);
+                std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+                PlayerBotMgr::BotStance newStance = PlayerBotMgr::STANCE_DEFENSIVE;
+                if (s == "passive" || s == "p")
+                    newStance = PlayerBotMgr::STANCE_PASSIVE;
+                else if (s == "aggressive" || s == "a")
+                    newStance = PlayerBotMgr::STANCE_AGGRESSIVE;
+                sPlayerBotMgr->SetBotStance(guid, newStance);
+                if (newStance == PlayerBotMgr::STANCE_PASSIVE && bot->IsInCombat())
+                    bot->CombatStop(true);
+                handler->PSendSysMessage("Debug: '{}' stance set to {}.",
+                    botName, newStance == PlayerBotMgr::STANCE_PASSIVE ? "passive" :
+                    (newStance == PlayerBotMgr::STANCE_AGGRESSIVE ? "aggressive" : "defensive"));
+                return true;
+            }
+
             handler->PSendSysMessage("Unknown debug subcommand '{}'.", cmd);
             return true;
         }
