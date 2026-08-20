@@ -1,7 +1,6 @@
 #include "BotPlayerScript.h"
 #include "BotGroupScript.h"
 #include "BotCommon.h"
-#include "BotCommandBar.h"
 #include "PlayerBotMgr.h"
 #include "Group.h"
 #include "ObjectAccessor.h"
@@ -42,11 +41,7 @@ void BotPlayerScript::OnLogin(Player* player)
 #endif
 {
     if (!sPlayerBotMgr->IsBot(player->GetGUID()))
-    {
-        // 非 bot 玩家（master）：登录自动恢复命令条（技能栏2隐藏页, 纯内存）
-        BotBarApply(player);
         return;
-    }
 
     BotNotify(player, "|cff00ff00[Bot]|r Bot mode active.");
     BotNotify(player, "|cff00ff00[Bot]|r Master: |cffff00ff{}|r", 
@@ -1183,7 +1178,6 @@ float BotPlayerScript::CalculateAverageItemLevel(Player* player)
 }
 
 extern void AddBotCommandScripts();
-extern void AddBotCommandBarScripts();
 
 void AddPlayerBotScripts()
 {
@@ -1198,6 +1192,5 @@ void AddPlayerBotScripts()
     new BotPlayerScript();
     new BotGroupScript();
     AddBotCommandScripts();
-    AddBotCommandBarScripts();
     LOG_INFO("playerbots", "[{} (rev {}, built {})] PlayerBot scripts registered successfully!", PLAYERBOT_VERSION, PLAYERBOT_REV, PLAYERBOT_BUILD);
 }

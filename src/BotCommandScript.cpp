@@ -1,9 +1,9 @@
 #include "BotCommandScript.h"
 #include "BotCommon.h"
 #include "BotPlayerScript.h"
-#include "BotCommandBar.h"
 #include "PlayerBotMgr.h"
 #include "ObjectAccessor.h"
+#include "Language.h"
 #include "Player.h"
 #include "Chat.h"
 #include "Log.h"
@@ -12,18 +12,30 @@
 #include "World.h"
 #include "Item.h"
 #include "ItemTemplate.h"
-#include <sstream>
-#include <iomanip>
 
-// 协议输出的纯 GUID（如 Player-0-00000002），避免核心 ToString() 的冗长格式
-static std::string BotGuidString(ObjectGuid guid)
+// Console usage：完全对齐 AZ 核心命令输出（acore_string 195/8/191/192）
+//   ### USAGE: .bot ...
+//   Possible subcommands:
+//   |- bot attack ...
+//   |- bot list
+//   ...
+static void BotPrintConsoleUsage(ChatHandler* handler)
 {
-    if (guid.IsEmpty())
-        return "None";
-    std::ostringstream ss;
-    ss << guid.GetTypeName() << "-" << uint16(guid.GetHigh()) << "-"
-       << std::setw(8) << std::setfill('0') << guid.GetCounter();
-    return ss.str();
+    handler->PSendSysMessage(LANG_CMD_HELP_GENERIC, "bot");
+    handler->SendSysMessage(LANG_SUBCMDS_LIST);
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot attack ...");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot autospell ...");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot clearmaster <name>");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot follow ...");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot list");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot master <name>");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot remove <name>");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot return ...");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot set <name>");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot skill ...");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot spell ...");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot stance ...");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot stay ...");
 }
 
 #define PLAYERBOT_VERSION "v2.2.0"
@@ -68,10 +80,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (isConsole)
         {
-            BotSendSysMessage(handler, "[PlayerBot {} (rev {}, built {})] Usage:", PLAYERBOT_VERSION, PLAYERBOT_REV, PLAYERBOT_BUILD);
-            BotSendSysMessage(handler, "  bot set <playername>     - Mark a player as Bot");
-            BotSendSysMessage(handler, "  bot remove <playername>  - Remove a player from Bot list");
-            BotSendSysMessage(handler, "  bot list                 - List all Bot players");
+            BotPrintConsoleUsage(handler);
         }
         else
         {
@@ -105,10 +114,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             // Console with only whitespace: show the console usage instead of
             // returning false (returning false makes the core print
             // "There is no detailed usage information associated with 'bot'").
-            BotSendSysMessage(handler, "[PlayerBot {} (rev {}, built {})] Usage:", PLAYERBOT_VERSION, PLAYERBOT_REV, PLAYERBOT_BUILD);
-            BotSendSysMessage(handler, "  bot set <playername>     - Mark a player as Bot");
-            BotSendSysMessage(handler, "  bot remove <playername>  - Remove a player from Bot list");
-            BotSendSysMessage(handler, "  bot list                 - List all Bot players");
+            BotPrintConsoleUsage(handler);
             return true;
         }
 
@@ -120,26 +126,26 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             char* playerName = strtok(nullptr, " ");
             if (!playerName)
             {
-                BotSendSysMessage(handler, "BOTSET;*;*;usage");
-                return true;
+                handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                return false;
             }
 
             ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
             if (guid.IsEmpty())
             {
-                BotSendSysMessage(handler, "BOTSET;*;{};notfound", playerName);
-                return true;
+                handler->PSendSysMessage("Player \"{}\" not found.", playerName);
+                return false;
             }
 
             if (sPlayerBotMgr->IsBot(guid))
             {
-                BotSendSysMessage(handler, "BOTSET;{};{};already;{}", BotGuidString(guid), playerName, sPlayerBotMgr->GetCount());
+                handler->PSendSysMessage("Player \"{}\" is already a Bot.", playerName);
                 return true;
             }
 
             sPlayerBotMgr->AddBot(guid);
             PB_LOG(1, "Console 'bot set': '{}' marked as bot ({})", playerName, guid.ToString());
-            BotSendSysMessage(handler, "BOTSET;{};{};ok;{}", BotGuidString(guid), playerName, sPlayerBotMgr->GetCount());
+            handler->PSendSysMessage("Player \"{}\" marked as Bot ({} total).", playerName, sPlayerBotMgr->GetCount());
             return true;
         }
 
@@ -148,33 +154,36 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             char* playerName = strtok(nullptr, " ");
             if (!playerName)
             {
-                BotSendSysMessage(handler, "BOTREMOVE;*;*;usage");
-                return true;
+                handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                return false;
             }
 
             ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
             if (guid.IsEmpty())
             {
-                BotSendSysMessage(handler, "BOTREMOVE;*;{};notfound", playerName);
-                return true;
+                handler->PSendSysMessage("Player \"{}\" not found.", playerName);
+                return false;
             }
 
             if (!sPlayerBotMgr->IsBot(guid))
             {
-                BotSendSysMessage(handler, "BOTREMOVE;{};{};notbot;{}", BotGuidString(guid), playerName, sPlayerBotMgr->GetCount());
-                return true;
+                handler->PSendSysMessage("Player \"{}\" is not a Bot.", playerName);
+                return false;
             }
 
             sPlayerBotMgr->RemoveBot(guid);
             PB_LOG(1, "Console 'bot remove': '{}' removed from bots ({})", playerName, guid.ToString());
-            BotSendSysMessage(handler, "BOTREMOVE;{};{};ok;{}", BotGuidString(guid), playerName, sPlayerBotMgr->GetCount());
+            handler->PSendSysMessage("Player \"{}\" removed from Bot list ({} total).", playerName, sPlayerBotMgr->GetCount());
             return true;
         }
 
         if (cmd == "list")
         {
             auto bots = sPlayerBotMgr->GetAllBots();
-            BotSendSysMessage(handler, "BOTLIST;{}", bots.size());
+            // 对齐 AZ 表格输出 (acore_string onlinelist 格式: -前后缀 + [字段]固定宽)
+            BotSendSysMessage(handler, "-================ PlayerBot 在线列表 ({}) ================-", bots.size());
+            BotSendSysMessage(handler, "-[{:<14}][{:<4}][{:<14}][{:<12}]-", "角色名", "在线", "主人", "姿态");
+            BotSendSysMessage(handler, "-==================================================================-");
             for (auto const& guid : bots)
             {
                 Player* player = ObjectAccessor::FindConnectedPlayer(guid);
@@ -185,18 +194,18 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                     case PlayerBotMgr::STANCE_AGGRESSIVE: stanceName = "aggressive"; break;
                     default: break;
                 }
-                BotSendSysMessage(handler, "BOT;{};{};{};{};{}",
-                    BotGuidString(guid),
+                BotSendSysMessage(handler, "-[{:<14}][{:<4}][{:<14}][{:<12}]-",
                     sPlayerBotMgr->GetCharacterName(guid),
                     player ? "1" : "0",
                     sPlayerBotMgr->GetMasterName(guid).c_str(),
                     stanceName);
             }
+            BotSendSysMessage(handler, "-==================================================================-");
             return true;
         }
 
-        BotSendSysMessage(handler, "BOTERROR;{};unknown command", cmd);
-        return true;
+        handler->PSendSysMessage("Unknown subcommand '{}'.", cmd);
+        return false;
     }
 
     if (!handler->GetSession())
@@ -215,94 +224,27 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         // print "no detailed usage" (which happens when we return false here).
         BotSendSysMessage(handler, "|cff00ff00=== PlayerBot Module {} (rev {}, built {}) ===|r", PLAYERBOT_VERSION, PLAYERBOT_REV, PLAYERBOT_BUILD);
         BotSendSysMessage(handler, "|cffff0000GM Commands:|r");
-        BotSendSysMessage(handler, "|cff00ff/bot set $name|r             - Mark a player as Bot");
-        BotSendSysMessage(handler, "|cff00ff/bot remove $name|r          - Remove a player from Bot list");
-        BotSendSysMessage(handler, "|cff00ff/bot list|r                  - List all Bot players");
-        BotSendSysMessage(handler, "|cff00ff/bot master $name|r          - Show bot's master");
-        BotSendSysMessage(handler, "|cff00ff/bot clearmaster $name|r     - Clear bot's master");
+        BotSendSysMessage(handler, "|cff00ff00/bot set $name|r             - Mark a player as Bot");
+        BotSendSysMessage(handler, "|cff00ff00/bot remove $name|r          - Remove a player from Bot list");
+        BotSendSysMessage(handler, "|cff00ff00/bot list|r                  - List bots (yours or all)");
+        BotSendSysMessage(handler, "|cff00ff00/bot master $name|r          - Show bot's master");
+        BotSendSysMessage(handler, "|cff00ff00/bot clearmaster $name|r     - Clear bot's master");
         BotSendSysMessage(handler, "|cffff0000Player Commands:|r");
-        BotSendSysMessage(handler, "|cff00ff/bot stance [d|p|a]|r        - Set stance for ALL your bots");
-        BotSendSysMessage(handler, "|cff00ff/bot skillpool|r             - List bot skill pool");
-        BotSendSysMessage(handler, "|cff00ff/bot skill pool/info|r          - View skills (bar = player's 1st action bar)");
+        BotSendSysMessage(handler, "|cff00ff00/bot attack [$name]|r        - Attack master's target");
+        BotSendSysMessage(handler, "|cff00ff00/bot follow [$name]|r        - Follow master");
+        BotSendSysMessage(handler, "|cff00ff00/bot stay [$name]|r          - Stay at current position");
+        BotSendSysMessage(handler, "|cff00ff00/bot return [$name]|r        - Teleport back to master");
+        BotSendSysMessage(handler, "|cff00ff00/bot stance [$name] [d|p|a]|r - Set stance (d=def,p=passive,a=agg)");
+        BotSendSysMessage(handler, "|cff00ff00/bot spell [$name] <1-12>|r   - Cast a skill slot");
+        BotSendSysMessage(handler, "|cff00ff00/bot autospell [$name] <1-12>|r- Toggle slot autocast");
+        BotSendSysMessage(handler, "|cff00ff00/bot skill [$name] pool|info|r - View bot skills");
+        BotSendSysMessage(handler, "|cff00ff00==================================================|r");
+        BotSendSysMessage(handler, "Total bots: |cffff00ff{}|r", sPlayerBotMgr->GetCount());
         return true;
     }
 
     std::string cmd(action);
     std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
-
-    // ---- 自定义动作条验证 (P-016) ----
-    // /bot testbar [slot]  -- 把 master 已学会的第一个主动法术塞进指定动作条
-    // 槽位(默认 0)并下发 SMSG_ACTION_BUTTONS。纯机制验证: 服务端能否自定义
-    // 普通动作条任意位置。slot 0-143 对应全部 7 条命令条(每条 12 格)。
-    if (cmd == "testbar")
-    {
-        // /bot testbar <start> [end]  -- 把 master 已学会的第一个主动法术填进
-        // 槽位范围 start..end(默认=start), 并下发 SMSG_ACTION_BUTTONS。
-        // 用途: 验证客户端动作条显示边界(144=MAX, 客户端显示到哪格?)。
-        uint32 start = 0, end = 0;
-        char* slotArg = strtok(nullptr, " ");
-        if (slotArg)
-            start = static_cast<uint32>(strtoul(slotArg, nullptr, 10));
-        char* endArg = strtok(nullptr, " ");
-        end = endArg ? static_cast<uint32>(strtoul(endArg, nullptr, 10)) : start;
-        if (end < start)
-            std::swap(start, end);
-
-        // 取 master 已学会的第一个主动法术(保证 addActionButton 校验通过)
-        uint32 spellId = 0;
-        for (auto const& itr : currentPlayer->GetSpellMap())
-        {
-            uint32 id = itr.first;
-            if (!currentPlayer->HasActiveSpell(id))
-                continue;
-            SpellInfo const* si = sSpellMgr->GetSpellInfo(id);
-            if (!si || si->IsPassive())
-                continue;
-            spellId = id;
-            break;
-        }
-        if (!spellId)
-        {
-            BotSendSysMessage(handler, "BOTERROR;testbar;no active spell");
-            return true;
-        }
-
-        uint32 ok = 0;
-        for (uint32 slot = start; slot <= end && slot < MAX_ACTION_BUTTONS; ++slot)
-            if (currentPlayer->addActionButton(slot, spellId, ACTION_BUTTON_SPELL))
-                ++ok;
-        if (ok)
-            currentPlayer->SendActionButtons(1);
-        BotSendSysMessage(handler, "BOTACTION;testbar;range={}-{};spell={};filled={}/{}",
-            start, end, spellId, ok, (end - start + 1));
-        PB_LOG(1, "Command 'testbar' by '{}': range {}-{} spell {} filled {}/{}",
-            currentPlayer->GetName(), start, end, spellId, ok, (end - start + 1));
-        return true;
-    }
-
-    // ---- 命令动作条 (P-016)：/bot bar [on|off] ----
-    // on: 临时学会命令法术 + 塞进普通动作条并下发（完全内存）
-    // off: 移除临时法术 + 清空按钮
-    if (cmd == "bar")
-    {
-        std::string sub = "on";
-        char* subArg = strtok(nullptr, " ");
-        if (subArg)
-            sub = subArg;
-        std::transform(sub.begin(), sub.end(), sub.begin(), ::tolower);
-
-        if (sub == "off" || sub == "remove")
-        {
-            BotBarRemove(currentPlayer);
-            BotSendSysMessage(handler, "BOTACTION;bar;off");
-        }
-        else
-        {
-            BotBarApply(currentPlayer);
-            BotSendSysMessage(handler, "BOTACTION;bar;on");
-        }
-        return true;
-    }
 
     // ---- Pet-style commands (only for the bot's master) ----
     // Optional single-bot target: /bot <cmd> [$botName]  (no name = all your bots)
@@ -324,12 +266,12 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             ObjectGuid tg = sPlayerBotMgr->FindPlayerByName(nameArg);
             if (tg.IsEmpty())
             {
-                BotSendSysMessage(handler, "BOTACTION;*;{};{};notfound", nameArg, cmd);
+                BotSendSysMessage(handler, "|cffff0000Bot '{}' not found.|r", nameArg);
                 return true;
             }
             if (!sPlayerBotMgr->IsMasterOf(currentPlayer->GetGUID(), tg))
             {
-                BotSendSysMessage(handler, "BOTACTION;*;{};{};notowner", nameArg, cmd);
+                BotSendSysMessage(handler, "|cffff0000You don't own bot '{}'.|r", nameArg);
                 return true;
             }
             targets.insert(tg);
@@ -358,7 +300,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 if (!masterTarget || !masterTarget->IsAlive() ||
                     !bot->IsValidAttackTarget(masterTarget))
                 {
-                    BotSendSysMessage(handler, "BOTACTION;*;*;attack;error");
+                    BotSendSysMessage(handler, "|cffff0000No valid attack target.|r");
                     return true;
                 }
                 sPlayerBotMgr->SetBotAttackTarget(botGuid, masterTarget->GetGUID());
@@ -367,7 +309,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 // Immediate execution mirroring pet AttackStart: stop current
                 // action and attack/chase the target (handles melee/ranged).
                 BotPlayerScript::ExecuteBotAttack(bot, masterTarget);
-                BotSendSysMessage(handler, "BOTACTION;{};{};attack;ok", BotGuidString(botGuid), bot->GetName());
+                BotSendSysMessage(handler, "|cff00ff00{}: attack.|r", bot->GetName());
             }
             else if (cmd == "return")
             {
@@ -379,7 +321,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 bot->TeleportTo(currentPlayer->GetMapId(),
                     currentPlayer->GetPositionX(), currentPlayer->GetPositionY(),
                     currentPlayer->GetPositionZ(), currentPlayer->GetOrientation());
-                BotSendSysMessage(handler, "BOTACTION;{};{};return;ok", BotGuidString(botGuid), bot->GetName());
+                BotSendSysMessage(handler, "|cff00ff00{}: return.|r", bot->GetName());
                 count++;
                 continue;
             }
@@ -392,7 +334,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 sPlayerBotMgr->ClearBotStayPosition(botGuid);
                 sPlayerBotMgr->SetBotReturnMode(botGuid, false); // follow when idle
                 BotPlayerScript::ExecuteBotFollow(bot, currentPlayer);
-                BotSendSysMessage(handler, "BOTACTION;{};{};follow;ok", BotGuidString(botGuid), bot->GetName());
+                BotSendSysMessage(handler, "|cff00ff00{}: follow.|r", bot->GetName());
             }
             else // stay
             {
@@ -407,12 +349,12 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 bot->InterruptNonMeleeSpells(false);
                 bot->GetMotionMaster()->Clear();
                 bot->GetMotionMaster()->MoveIdle();
-                BotSendSysMessage(handler, "BOTACTION;{};{};stay;ok", BotGuidString(botGuid), bot->GetName());
+                BotSendSysMessage(handler, "|cff00ff00{}: stay.|r", bot->GetName());
             }
             count++;
         }
 
-        BotSendSysMessage(handler, "BOTACTION;all;*;{};done;{}", cmd, count);
+        BotSendSysMessage(handler, "|cff00ff00{}: {} bot(s).|r", cmd, count);
         PB_LOG(1, "Command '{}' by '{}' executed on {} bot(s)",
             cmd, currentPlayer->GetName(), count);
         return true;
@@ -454,7 +396,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             auto botGuids = targets;
             if (botGuids.empty())
             {
-                BotSendSysMessage(handler, "BOTSKILL;*;*;nobots");
+                BotSendSysMessage(handler, "|cffff0000No bots.|r");
                 return true;
             }
             ObjectGuid firstBot = *botGuids.begin();
@@ -465,19 +407,18 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             {
                 if (!firstBotPlayer)
                 {
-                    BotSendSysMessage(handler, "BOTSKILL;{};{};pool;offline", BotGuidString(firstBot), firstBotName);
+                    BotSendSysMessage(handler, "|cffff0000'{}' is offline.|r", firstBotName);
                     return true;
                 }
                 auto pool = ScanBotSkillPool(firstBotPlayer);
-                BotSendSysMessage(handler, "BOTSKILL;{};{};pool;{}", BotGuidString(firstBot), firstBotName, pool.size());
+                BotSendSysMessage(handler, "|cff00ff00'{}' skill pool ({}):|r", firstBotName, pool.size());
                 uint32 idx = 0;
                 for (uint32 sid : pool)
                 {
                     SpellInfo const* info = sSpellMgr->GetSpellInfo(sid);
                     if (!info) continue;
-                    BotSendSysMessage(handler, "BOTSKILL;{};{};poolitem;{};{};{}",
-                        BotGuidString(firstBot), firstBotName, ++idx, sid,
-                        info->SpellName[sWorld->GetDefaultDbcLocale()]);
+                    BotSendSysMessage(handler, "  {}: [{}] {}",
+                        ++idx, sid, info->SpellName[sWorld->GetDefaultDbcLocale()]);
                 }
                 return true;
             }
@@ -487,46 +428,45 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 char* arg2 = strtok(nullptr, " ");
                 if (!arg2)
                 {
-                    BotSendSysMessage(handler, "BOTSKILL;{};{};info;usage", BotGuidString(firstBot), firstBotName);
+                    BotSendSysMessage(handler, "|cffff0000Usage: /bot skill info <1-{}>.|r", PlayerBotMgr::MAX_SKILL_SLOTS);
                     return true;
                 }
                 int slot = atoi(arg2);
                 if (slot < 1 || slot > PlayerBotMgr::MAX_SKILL_SLOTS)
                 {
-                    BotSendSysMessage(handler, "BOTSKILL;{};{};info;slot_error", BotGuidString(firstBot), firstBotName);
+                    BotSendSysMessage(handler, "|cffff0000Slot must be 1-{}.|r", PlayerBotMgr::MAX_SKILL_SLOTS);
                     return true;
                 }
                 if (!firstBotPlayer)
                 {
-                    BotSendSysMessage(handler, "BOTSKILL;{};{};info;offline", BotGuidString(firstBot), firstBotName);
+                    BotSendSysMessage(handler, "|cffff0000'{}' is offline.|r", firstBotName);
                     return true;
                 }
                 // Slot N is read from the bot character's first action bar.
                 uint32 sid = sPlayerBotMgr->GetBotSkillSlot(firstBotPlayer, slot);
                 if (!sid)
-                    BotSendSysMessage(handler, "BOTSKILL;{};{};info;{};empty", BotGuidString(firstBot), firstBotName, slot);
+                    BotSendSysMessage(handler, "|cffffffff'{}' slot {}: empty.|r", firstBotName, slot);
                 else if (SpellInfo const* info = sSpellMgr->GetSpellInfo(sid))
-                    BotSendSysMessage(handler, "BOTSKILL;{};{};info;{};{};{}",
-                        BotGuidString(firstBot), firstBotName, slot, sid,
+                    BotSendSysMessage(handler, "|cff00ff00'{}' slot {}: [{}] {}.|r",
+                        firstBotName, slot, sid,
                         info->SpellName[sWorld->GetDefaultDbcLocale()]);
                 return true;
             }
 
-            BotSendSysMessage(handler, "BOTSKILL;{};{};usage", BotGuidString(firstBot), firstBotName);
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot skill pool|info <1-{}>.|r", PlayerBotMgr::MAX_SKILL_SLOTS);
             return true;
         }
 
         // spell <N> / autospell <N>
-        const char* protoKey = (cmd == "autospell") ? "BOTAUTOSPELL" : "BOTSPELL";
         if (!arg1)
         {
-            BotSendSysMessage(handler, "{};*;*;usage", protoKey);
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot {} <1-{}>.|r", cmd, PlayerBotMgr::MAX_SKILL_SLOTS);
             return true;
         }
         int slot = atoi(arg1);
         if (slot < 1 || slot > PlayerBotMgr::MAX_SKILL_SLOTS)
         {
-            BotSendSysMessage(handler, "{};*;*;{};slot_error", protoKey, slot);
+            BotSendSysMessage(handler, "|cffff0000Slot must be 1-{}.|r", PlayerBotMgr::MAX_SKILL_SLOTS);
             return true;
         }
 
@@ -541,16 +481,14 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             {
                 sPlayerBotMgr->SetBotSlotAutocast(botGuid, slot,
                     !sPlayerBotMgr->IsBotSlotAutocast(botGuid, slot));
-                BotSendSysMessage(handler, "BOTAUTOSPELL;{};{};{};{}", BotGuidString(botGuid), bot->GetName(), slot,
-                    sPlayerBotMgr->IsBotSlotAutocast(botGuid, slot) ? "1" : "0");
+                bool on = sPlayerBotMgr->IsBotSlotAutocast(botGuid, slot);
+                BotSendSysMessage(handler, "|cff00ff00'{}' slot {} autocast: {}.|r", bot->GetName(), slot, on ? "ON" : "OFF");
                 count++;
             }
             else // spell: cast the slot's skill on the bot's current target
             {
                 // Slot N is read from the bot's own first action bar.
                 uint32 sid = sPlayerBotMgr->GetBotSkillSlot(bot, slot);
-                BotSendSysMessage(handler, "BOTSPELL;{};{};{};{};{}", BotGuidString(botGuid), bot->GetName(), slot,
-                    sid ? "ok" : "empty", sid);
                 if (sid)
                 {
                     if (Unit* t = bot->GetVictim())
@@ -563,11 +501,14 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                         if (t && t->IsAlive() && bot->IsValidAttackTarget(t))
                             bot->CastSpell(t, sid, false);
                     }
+                    BotSendSysMessage(handler, "|cff00ff00'{}' cast slot {} [{}].|r", bot->GetName(), slot, sid);
                 }
+                else
+                    BotSendSysMessage(handler, "|cffff0000'{}' slot {} is empty.|r", bot->GetName(), slot);
                 count++;
             }
         }
-        BotSendSysMessage(handler, "{};all;*;{};done;{}", protoKey, slot, count);
+        BotSendSysMessage(handler, "|cff00ff00{}: {} bot(s).|r", cmd, count);
         PB_LOG(1, "Command '{}' by '{}': processed {} bot(s)", cmd, currentPlayer->GetName(), count);
         return true;
     }
@@ -576,34 +517,34 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            BotSendSysMessage(handler, "BOTSET;*;*;nopermission");
+            BotSendSysMessage(handler, "|cffff0000Permission denied.|r");
             return true;
         }
 
         char* playerName = strtok(nullptr, " ");
         if (!playerName)
         {
-            BotSendSysMessage(handler, "BOTSET;*;*;usage");
+            BotSendSysMessage(handler, "|cffff0000Incorrect syntax.|r");
             return true;
         }
 
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            BotSendSysMessage(handler, "BOTSET;*;{};notfound", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' not found.|r", playerName);
             return true;
         }
 
         if (sPlayerBotMgr->IsBot(guid))
         {
-            BotSendSysMessage(handler, "BOTSET;{};{};already;{}", BotGuidString(guid), playerName, sPlayerBotMgr->GetCount());
+            BotSendSysMessage(handler, "|cffff0000Player '{}' is already a Bot.|r", playerName);
             return true;
         }
 
         sPlayerBotMgr->AddBot(guid);
         PB_LOG(1, "Command 'set' by '{}': '{}' marked as bot ({})",
             currentPlayer->GetName(), playerName, guid.ToString());
-        BotSendSysMessage(handler, "BOTSET;{};{};ok;{}", BotGuidString(guid), playerName, sPlayerBotMgr->GetCount());
+        BotSendSysMessage(handler, "|cff00ff00Player '{}' marked as Bot ({} total).|r", playerName, sPlayerBotMgr->GetCount());
         return true;
     }
 
@@ -611,34 +552,34 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            BotSendSysMessage(handler, "BOTREMOVE;*;*;nopermission");
+            BotSendSysMessage(handler, "|cffff0000Permission denied.|r");
             return true;
         }
 
         char* playerName = strtok(nullptr, " ");
         if (!playerName)
         {
-            BotSendSysMessage(handler, "BOTREMOVE;*;*;usage");
+            BotSendSysMessage(handler, "|cffff0000Incorrect syntax.|r");
             return true;
         }
 
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            BotSendSysMessage(handler, "BOTREMOVE;*;{};notfound", playerName);
+            BotSendSysMessage(handler, "|cffff0000Player '{}' not found.|r", playerName);
             return true;
         }
 
         if (!sPlayerBotMgr->IsBot(guid))
         {
-            BotSendSysMessage(handler, "BOTREMOVE;{};{};notbot;{}", BotGuidString(guid), playerName, sPlayerBotMgr->GetCount());
+            BotSendSysMessage(handler, "|cffff0000Player '{}' is not a Bot.|r", playerName);
             return true;
         }
 
         sPlayerBotMgr->RemoveBot(guid);
         PB_LOG(1, "Command 'remove' by '{}': '{}' removed from bots ({})",
             currentPlayer->GetName(), playerName, guid.ToString());
-        BotSendSysMessage(handler, "BOTREMOVE;{};{};ok;{}", BotGuidString(guid), playerName, sPlayerBotMgr->GetCount());
+        BotSendSysMessage(handler, "|cff00ff00Player '{}' removed from Bot list ({} total).|r", playerName, sPlayerBotMgr->GetCount());
         return true;
     }
 
@@ -651,12 +592,11 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         else
             bots = sPlayerBotMgr->GetBotsByMaster(currentPlayer->GetGUID());
 
-        // Machine-readable output for the BotCommander client addon.
-        // Format (semicolon-separated, no color codes; "|" is an escape char
-        // in WoW chat so it must NOT be used as a separator):
-        //   BOTLIST;<total>
-        //   BOT;<guid>;<name>;<online 1/0>;<master|NONE>;<stance>
-        BotSendSysMessage(handler, "BOTLIST;{}", bots.size());
+        // 对齐 AZ onlinelist 表格格式 (acore_string 1015/1010/1012/1013)。
+        // 玩家端也输出同样的 -[...]- 表格，BotCommander 插件直接解析文本即可。
+        BotSendSysMessage(handler, "-================ PlayerBot 在线列表 ({}) ================-", bots.size());
+        BotSendSysMessage(handler, "-[{:<14}][{:<4}][{:<14}][{:<12}]-", "角色名", "在线", "主人", "姿态");
+        BotSendSysMessage(handler, "-==================================================================-");
         for (auto const& guid : bots)
         {
             Player* player = ObjectAccessor::FindConnectedPlayer(guid);
@@ -669,26 +609,20 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 default: break;
             }
 
-            BotSendSysMessage(handler, "BOT;{};{};{};{};{}",
-                BotGuidString(guid),
+            BotSendSysMessage(handler, "-[{:<14}][{:<4}][{:<14}][{:<12}]-",
                 sPlayerBotMgr->GetCharacterName(guid),
                 player ? "1" : "0",
                 sPlayerBotMgr->GetMasterName(guid).c_str(), // "None"/"Offline Master"/master name
                 stanceName);
 
-            // DebugDump (PlayerBot.DebugLevel >= 3): one machine-readable line
-            // per bot with every in-memory state + live info. The addon ignores
-            // unknown prefixes, so this is safe to enable.
+            // DebugDump (PlayerBot.DebugLevel >= 3): 每 bot 附加一行状态调试信息。
             if (sPlayerBotMgr->DebugDump())
             {
                 Unit* victim = player ? player->GetVictim() : nullptr;
-                BotSendSysMessage(handler, "BOTSTATE;{};{};{};{};{};{};{};{};{};{};{};{}",
-                    BotGuidString(guid),
-                    sPlayerBotMgr->GetMasterName(guid).c_str(),
-                    stanceName,
+                BotSendSysMessage(handler, "|cffffffff  State: cmd={}, ret={}, tgt={}, slot={}, lv={}, hp={}%, map={}, combat={}, victim={}|r",
                     sPlayerBotMgr->CommandName(sPlayerBotMgr->GetBotCommand(guid)),
                     sPlayerBotMgr->GetBotReturnMode(guid) ? "stay" : "follow",
-                    sPlayerBotMgr->GetBotAttackTarget(guid).GetRawValue() ? BotGuidString(sPlayerBotMgr->GetBotAttackTarget(guid)) : "none",
+                    sPlayerBotMgr->GetBotAttackTarget(guid).GetRawValue() ? sPlayerBotMgr->GetBotAttackTarget(guid).ToString() : "none",
                     sPlayerBotMgr->GetBotSkillCursor(guid),
                     player ? int(player->GetLevel()) : -1,
                     player ? int(player->GetHealthPct()) : -1,
@@ -697,6 +631,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                     player ? (victim ? victim->GetName() : "none") : "-");
             }
         }
+        BotSendSysMessage(handler, "-==================================================================-");
         return true;
     }
 
@@ -705,7 +640,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         char* arg1 = strtok(nullptr, " ");
         if (!arg1)
         {
-            BotSendSysMessage(handler, "BOTSTANCE;*;*;usage");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot stance [$name] [d|p|a].|r");
             return true;
         }
 
@@ -753,7 +688,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                     count++;
                 }
             }
-            BotSendSysMessage(handler, "BOTSTANCE;all;*;{};{}", stanceLowerNames[newStance], count);
+            BotSendSysMessage(handler, "|cff00ff00Stance {} set for {} bot(s).|r", stanceLowerNames[newStance], count);
             PB_LOG(1, "Command 'stance' by '{}': set {} for {} bot(s)",
                 currentPlayer->GetName(), stanceNames[newStance], count);
             return true;
@@ -762,7 +697,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         // Named bot: /bot stance <name> <stance>
         if (!arg2)
         {
-            BotSendSysMessage(handler, "BOTSTANCE;*;*;usage");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot stance <name> <d|p|a>.|r");
             return true;
         }
 
@@ -772,20 +707,20 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            BotSendSysMessage(handler, "BOTSTANCE;*;{};error", playerName);
+            BotSendSysMessage(handler, "|cffff0000Bot '{}' not found.|r", playerName);
             return true;
         }
 
         if (!sPlayerBotMgr->IsBot(guid))
         {
-            BotSendSysMessage(handler, "BOTSTANCE;{};{};{};notbot", BotGuidString(guid), playerName, stanceName);
+            BotSendSysMessage(handler, "|cffff0000'{}' is not a Bot.|r", playerName);
             return true;
         }
 
         ObjectGuid masterGuid = sPlayerBotMgr->GetMaster(guid);
         if (!isGM3 && masterGuid != currentPlayer->GetGUID())
         {
-            BotSendSysMessage(handler, "BOTSTANCE;{};{};{};nopermission", BotGuidString(guid), playerName, stanceName);
+            BotSendSysMessage(handler, "|cffff0000You don't own bot '{}'.|r", playerName);
             return true;
         }
 
@@ -804,7 +739,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
             bot->InterruptNonMeleeSpells(false);
         }
 
-        BotSendSysMessage(handler, "BOTSTANCE;{};{};{};ok", BotGuidString(guid), playerName, stanceLowerNames[newStance]);
+        BotSendSysMessage(handler, "|cff00ff00'{}' stance: {}.|r", playerName, stanceNames[newStance]);
         PB_LOG(1, "Command 'stance' by '{}': bot '{}' set to {}",
             currentPlayer->GetName(), playerName, stanceNames[newStance]);
 
@@ -821,34 +756,34 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            BotSendSysMessage(handler, "BOTCLEARMASTER;*;*;nopermission");
+            BotSendSysMessage(handler, "|cffff0000Permission denied.|r");
             return true;
         }
 
         char* playerName = strtok(nullptr, " ");
         if (!playerName)
         {
-            BotSendSysMessage(handler, "BOTCLEARMASTER;*;*;usage");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot clearmaster <name>.|r");
             return true;
         }
 
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            BotSendSysMessage(handler, "BOTCLEARMASTER;*;{};notfound", playerName);
+            BotSendSysMessage(handler, "|cffff0000Bot '{}' not found.|r", playerName);
             return true;
         }
 
         if (!sPlayerBotMgr->IsBot(guid))
         {
-            BotSendSysMessage(handler, "BOTCLEARMASTER;{};{};notbot", BotGuidString(guid), playerName);
+            BotSendSysMessage(handler, "|cffff0000'{}' is not a Bot.|r", playerName);
             return true;
         }
 
         sPlayerBotMgr->ClearMaster(guid);
         PB_LOG(1, "Command 'clearmaster' by '{}': bot '{}' master cleared ({})",
             currentPlayer->GetName(), playerName, guid.ToString());
-        BotSendSysMessage(handler, "BOTCLEARMASTER;{};{};ok", BotGuidString(guid), playerName);
+        BotSendSysMessage(handler, "|cff00ff00'{}' master cleared.|r", playerName);
         return true;
     }
 
@@ -856,27 +791,27 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
     {
         if (!isGM3)
         {
-            BotSendSysMessage(handler, "BOTMASTER;*;*;nopermission");
+            BotSendSysMessage(handler, "|cffff0000Permission denied.|r");
             return true;
         }
 
         char* playerName = strtok(nullptr, " ");
         if (!playerName)
         {
-            BotSendSysMessage(handler, "BOTMASTER;*;*;usage");
+            BotSendSysMessage(handler, "|cffff0000Usage: /bot master <name>.|r");
             return true;
         }
 
         ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
         if (guid.IsEmpty())
         {
-            BotSendSysMessage(handler, "BOTMASTER;*;{};notfound", playerName);
+            BotSendSysMessage(handler, "|cffff0000Bot '{}' not found.|r", playerName);
             return true;
         }
 
         if (!sPlayerBotMgr->IsBot(guid))
         {
-            BotSendSysMessage(handler, "BOTMASTER;{};{};notbot", BotGuidString(guid), playerName);
+            BotSendSysMessage(handler, "|cffff0000'{}' is not a Bot.|r", playerName);
             return true;
         }
 
@@ -884,7 +819,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         if (!masterGuid.IsEmpty())
         {
             Player* master = ObjectAccessor::FindConnectedPlayer(masterGuid);
-            BotSendSysMessage(handler, "BOTMASTER;{};{};{}", BotGuidString(guid), playerName,
+            BotSendSysMessage(handler, "|cff00ff00'{}' master: {}|r", playerName,
                 master ? master->GetName().c_str() : "Offline Master");
             PB_LOG(1, "Command 'master' by '{}': bot '{}' master is '{}'",
                 currentPlayer->GetName(), playerName,
@@ -892,13 +827,13 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         }
         else
         {
-            BotSendSysMessage(handler, "BOTMASTER;{};{};None", BotGuidString(guid), playerName);
+            BotSendSysMessage(handler, "|cff00ff00'{}' master: None|r", playerName);
             PB_LOG(1, "Command 'master' by '{}': bot '{}' has no master",
                 currentPlayer->GetName(), playerName);
         }
         return true;
     }
 
-    BotSendSysMessage(handler, "BOTERROR;{};unknown", action);
+    BotSendSysMessage(handler, "|cffff0000Unknown command '{}'.|r", action);
     return true;
 }
