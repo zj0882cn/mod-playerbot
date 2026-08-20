@@ -301,8 +301,24 @@ void BotPlayerScript::DoCombat(Player* bot, Unit* target, bool chase)
     // casting/attacking. Pets set the target in Unit::Attack (SetTarget) and
     // re-face at cast time (PetAI::SetInFront) - not on a timer. Movement
     // facing is handled automatically by the spline.
-    if (bot->GetTarget() != target->GetGUID())
-        bot->SetTarget(target->GetGUID());
+    //
+    // NOTE: for players Player::SetTarget is a no-op (UNIT_FIELD_TARGET is
+    // normally driven by the client via CMSG_SET_TARGET -> SetSelection), so
+    // the old SetTarget call never updated the client-visible target. Use
+    // SetSelection instead so UNIT_FIELD_TARGET is really broadcast. Point it
+    // at the master - party/raid frames always let a player be selected, so in
+    // practice this always succeeds. If master is somehow unavailable
+    // (offline / other map) fall back to clearing the selection so no stale
+    // target is shown.
+    if (Player* master = ObjectAccessor::FindConnectedPlayer(sPlayerBotMgr->GetMaster(bot->GetGUID())))
+    {
+        if (bot->GetTarget() != master->GetGUID())
+            bot->SetSelection(master->GetGUID());
+    }
+    else if (bot->GetTarget())
+    {
+        bot->SetSelection(ObjectGuid::Empty);
+    }
     // Pet-style facing: always face the target before acting (PetAI::SetInFront
     // does this unconditionally - a real player keeps facing the target, the
     // bot must too to land melee swings / ranged shots). The old
