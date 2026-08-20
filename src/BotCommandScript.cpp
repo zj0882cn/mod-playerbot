@@ -36,6 +36,7 @@ static void BotPrintConsoleUsage(ChatHandler* handler)
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot clearmaster <name>");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot follow ...");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot gps <name>");
+    handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot target <name>");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot list");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot master <name>");
     handler->PSendSysMessage(LANG_SUBCMDS_LIST_ENTRY, "bot remove <name>");
@@ -245,6 +246,44 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
                 areaId, sAreaTableStore.LookupEntry(areaId) ? sAreaTableStore.LookupEntry(areaId)->area_name[sWorld->GetDefaultDbcLocale()] : "Unknown");
             handler->PSendSysMessage("X: {:.1f} Y: {:.1f} Z: {:.1f} Orientation: {:.1f}",
                 bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation());
+            return true;
+        }
+
+        if (cmd == "target")
+        {
+            // .bot target <name> —— 显示 bot 当前可见目标 UNIT_FIELD_TARGET（GetTarget()）
+            // 及其 master，用于验证「bot 可见目标 = master」（06f3752 起 DoCombat 用
+            // SetSelection 广播；旧版 SetTarget 对玩家是空操作 → target 恒为空）。
+            char* playerName = strtok(nullptr, " ");
+            if (!playerName)
+            {
+                handler->PSendSysMessage(LANG_CMD_SYNTAX);
+                return false;
+            }
+
+            ObjectGuid guid = sPlayerBotMgr->FindPlayerByName(playerName);
+            if (guid.IsEmpty())
+            {
+                handler->PSendSysMessage("Player \"{}\" not found.", playerName);
+                return false;
+            }
+
+            Player* bot = ObjectAccessor::FindConnectedPlayer(guid);
+            if (!bot || !bot->IsInWorld())
+            {
+                handler->PSendSysMessage("Player \"{}\" is offline.", playerName);
+                return true;
+            }
+
+            ObjectGuid targetGuid = bot->GetTarget();       // UNIT_FIELD_TARGET（SetSelection 广播值）
+            ObjectGuid victimGuid = bot->GetVictim() ? bot->GetVictim()->GetGUID() : ObjectGuid::Empty;
+            ObjectGuid masterGuid = sPlayerBotMgr->GetMaster(guid);
+            std::string targetStr = targetGuid ? targetGuid.ToString() : "none";
+            std::string victimStr = victimGuid ? victimGuid.ToString() : "none";
+            std::string masterStr = masterGuid ? masterGuid.ToString() : "none";
+            handler->PSendSysMessage("'{}' target: {}  victim: {}  master: {} ({})",
+                playerName, targetStr, victimStr,
+                masterGuid ? sPlayerBotMgr->GetMasterName(guid).c_str() : "none", masterStr);
             return true;
         }
 
@@ -465,6 +504,7 @@ bool BotCommandScript::HandleBotCommand(ChatHandler* handler, char const* args)
         BotSendSysMessage(handler, "|cff00ff00/bot spell [$name] <1-12>|r   - Cast a skill slot");
         BotSendSysMessage(handler, "|cff00ff00/bot autospell [$name] <1-12>|r- Toggle slot autocast");
         BotSendSysMessage(handler, "|cff00ff00/bot gps <name>|r              - Show bot position");
+        BotSendSysMessage(handler, "|cff00ff00/bot target <name>|r            - Show bot target (UNIT_FIELD_TARGET)");
         BotSendSysMessage(handler, "|cff00ff00/bot skill [$name] pool|info|r - View bot skills");
         BotSendSysMessage(handler, "|cff00ff00==================================================|r");
         BotSendSysMessage(handler, "Total bots: |cffff00ff{}|r", sPlayerBotMgr->GetCount());
